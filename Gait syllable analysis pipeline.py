@@ -242,9 +242,54 @@ fhr_x_smoothed = pd.Series(fhr_x).rolling(window=7, center=True, min_periods=1).
 fhr_y_smoothed = pd.Series(fhr_y).rolling(window=7, center=True, min_periods=1).mean().values
 
 low_pass_ffl_x = lowpass_filter(ffl_x, cutoff_freq=3, order=8)
+low_pass_ffl_y = lowpass_filter(ffl_y, cutoff_freq=3, order=8)
 low_pass_ffr_x = lowpass_filter(ffr_x, cutoff_freq=3, order=8)
+low_pass_ffr_y = lowpass_filter(ffr_y, cutoff_freq=3, order=8)
 low_pass_fhl_x = lowpass_filter(fhl_x, cutoff_freq=3, order=8)
+low_pass_fhl_y = lowpass_filter(fhl_y, cutoff_freq=3, order=8)
 low_pass_fhr_x = lowpass_filter(fhr_x, cutoff_freq=3, order=8)
+low_pass_fhr_y = lowpass_filter(fhr_y, cutoff_freq=3, order=8)
+
+# plt.figure(figsize=(15, 10))
+
+# plt.subplot(2, 2, 1)
+# plt.scatter(low_pass_ffl_x, low_pass_ffl_y, c=time_series, cmap='viridis', 
+#            alpha=0.6, s=1)
+# plt.colorbar(label='Time (s)')
+# plt.title('Left Front Foot X-Y Trajectory (Low-pass Filtered)')
+# plt.xlabel('X Position (cm)')
+# plt.ylabel('Y Position (cm)')
+# plt.grid(False)
+
+# plt.subplot(2, 2, 2)
+# plt.scatter(low_pass_ffr_x, low_pass_ffr_y, c=time_series, cmap='viridis', 
+#            alpha=0.6, s=1)
+# plt.colorbar(label='Time (s)')
+# plt.title('Right Front Foot X-Y Trajectory (Low-pass Filtered)')
+# plt.xlabel('X Position (cm)')
+# plt.ylabel('Y Position (cm)')
+# plt.grid(False)
+
+# plt.subplot(2, 2, 3)
+# plt.scatter(low_pass_fhl_x, low_pass_fhl_y, c=time_series, cmap='viridis', 
+#            alpha=0.6, s=1)
+# plt.colorbar(label='Time (s)')
+# plt.title('Left Hind Foot X-Y Trajectory (Low-pass Filtered)')
+# plt.xlabel('X Position (cm)')
+# plt.ylabel('Y Position (cm)')
+# plt.grid(False)
+
+# plt.subplot(2, 2, 4)
+# plt.scatter(low_pass_fhr_x, low_pass_fhr_y, c=time_series, cmap='viridis', 
+#            alpha=0.6, s=1)
+# plt.colorbar(label='Time (s)')
+# plt.title('Right Hind Foot X-Y Trajectory (Low-pass Filtered)')
+# plt.xlabel('X Position (cm)')
+# plt.ylabel('Y Position (cm)')
+# plt.grid(False)
+
+# plt.tight_layout()
+# plt.show()
 
 speed_ffl_x = abs(np.diff(ffl_x))
 
@@ -260,124 +305,124 @@ data = {"data": speed_data}
 bouts = detect_movement_bouts_to_valley(data, immobility_threshold=0.2, min_immobility_duration=5, min_movement_duration=2, max_expand_time=6)
 
 f, t, Zxx = signal.stft(ffl_x, fs=fs, window='hann', nperseg=256)
-plt.figure(figsize=(10, 6))
-plt.subplot(3, 1, 1)
-plt.pcolormesh(t, f, np.abs(Zxx), shading='gouraud')
-plt.axhline(y=3, color='k', linestyle='--', alpha=0.2, label='Cutoff Frequency (3 Hz)')
-plt.ylim(0, 4)
-plt.title('STFT Magnitude')
-plt.ylabel('Frequency(Hz)')
-plt.xlabel('Time(s)')
-# plt.colorbar(label='Magnitude')
+# plt.figure(figsize=(10, 6))
+# plt.subplot(3, 1, 1)
+# plt.pcolormesh(t, f, np.abs(Zxx), shading='gouraud')
+# plt.axhline(y=3, color='k', linestyle='--', alpha=0.2, label='Cutoff Frequency (3 Hz)')
+# plt.ylim(0, 4)
+# plt.title('STFT Magnitude')
+# plt.ylabel('Frequency(Hz)')
+# plt.xlabel('Time(s)')
+# # plt.colorbar(label='Magnitude')
 
-plt.subplot(3, 1, 2)
-plt.plot(time_series, ffl_x, label='x distance of Left front Foot', color='g', alpha=0.7)
-plt.xlim(time_series[0], time_series[-1])
-plt.title("x distance of Left Front Foot")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
+# plt.subplot(3, 1, 2)
+# plt.plot(time_series, ffl_x, label='x distance of Left front Foot', color='g', alpha=0.7)
+# plt.xlim(time_series[0], time_series[-1])
+# plt.title("x distance of Left Front Foot")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
 
-plt.subplot(3, 1, 3)
-plt.plot(time_series, low_pass_ffl_x, label='x distance of Left front Foot (After Low-pass Filter)', color='g', alpha=0.7)
-plt.xlim(time_series[0], time_series[-1])
-plt.title("x distance of Left Front Foot After Low-pass Filter")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
+# plt.subplot(3, 1, 3)
+# plt.plot(time_series, low_pass_ffl_x, label='x distance of Left front Foot (After Low-pass Filter)', color='g', alpha=0.7)
+# plt.xlim(time_series[0], time_series[-1])
+# plt.title("x distance of Left Front Foot After Low-pass Filter")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
-f1, t1, Zxx1 = signal.stft(speed_ffl_x, fs=fs, window='hann', nperseg=256)
+# f1, t1, Zxx1 = signal.stft(speed_ffl_x, fs=fs, window='hann', nperseg=256)
 
-plt.figure(figsize=(10, 6))
-plt.subplot(4, 1, 1)
-plt.plot(time_series, ffl_x, label='x distance of left front foot', color='g', alpha=0.7)
-plt.xlim(time_series[0], time_series[-1])
-plt.title("x distance of left front foot")
-plt.xlabel("time(s)")
-plt.ylabel("X distance(cm)")
-plt.grid(False)
-plt.subplot(4, 1, 2)
-plt.plot(time_series[:-1], speed_ffl_x, label='speed of left front foot', color='g', alpha=0.7)
-plt.xlim(time_series[0], time_series[-1])
-plt.title("speed of left front foot")
-plt.xlabel("time(s)")
-plt.ylabel("speed in x direction(cm/s)")
-plt.grid(False)
-plt.subplot(4, 1, 3)
-plt.pcolormesh(t1, f1, np.abs(Zxx1), shading='gouraud')
-plt.axhline(y=0.12, color='k', linestyle='--', alpha=0.2, label='cutoff frequency (0.12 hz)')
-plt.ylim(0, 0.2)
-plt.title('stft magnitude')
-plt.ylabel('frequency(hz)')
-plt.xlabel('time(s)')
-# plt.colorbar(label='magnitude')
-plt.subplot(4, 1, 4)
-plt.plot(time_series[:-1], low_pass_speed_ffl_x, label='speed of left front foot (Low-pass filtered)', color='g', alpha=0.7)
-# plt.plot(np.array(time_series)[valleys_low_pass_speed_ffl_x], low_pass_speed_ffl_x[valleys_low_pass_speed_ffl_x], "o", color='g', markersize=6)
-for bout in bouts:
-    start_time, end_time = bout
-    plt.axvspan(start_time, end_time, color='red', alpha=0.3, label='Movement Bout' if bout == bouts[0] else "")
-plt.xlim(time_series[0], time_series[-1])
-plt.title("speed of left front foot (low-pass filtered)")
-plt.xlabel("time(s)")
-plt.ylabel("speed in x direction(cm/s)")
-plt.grid(False)
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(10, 6))
+# plt.subplot(4, 1, 1)
+# plt.plot(time_series, ffl_x, label='x distance of left front foot', color='g', alpha=0.7)
+# plt.xlim(time_series[0], time_series[-1])
+# plt.title("x distance of left front foot")
+# plt.xlabel("time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.grid(False)
+# plt.subplot(4, 1, 2)
+# plt.plot(time_series[:-1], speed_ffl_x, label='speed of left front foot', color='g', alpha=0.7)
+# plt.xlim(time_series[0], time_series[-1])
+# plt.title("speed of left front foot")
+# plt.xlabel("time(s)")
+# plt.ylabel("speed in x direction(cm/s)")
+# plt.grid(False)
+# plt.subplot(4, 1, 3)
+# plt.pcolormesh(t1, f1, np.abs(Zxx1), shading='gouraud')
+# plt.axhline(y=0.12, color='k', linestyle='--', alpha=0.2, label='cutoff frequency (0.12 hz)')
+# plt.ylim(0, 0.2)
+# plt.title('stft magnitude')
+# plt.ylabel('frequency(hz)')
+# plt.xlabel('time(s)')
+# # plt.colorbar(label='magnitude')
+# plt.subplot(4, 1, 4)
+# plt.plot(time_series[:-1], low_pass_speed_ffl_x, label='speed of left front foot (Low-pass filtered)', color='g', alpha=0.7)
+# # plt.plot(np.array(time_series)[valleys_low_pass_speed_ffl_x], low_pass_speed_ffl_x[valleys_low_pass_speed_ffl_x], "o", color='g', markersize=6)
+# for bout in bouts:
+#     start_time, end_time = bout
+#     plt.axvspan(start_time, end_time, color='red', alpha=0.3, label='Movement Bout' if bout == bouts[0] else "")
+# plt.xlim(time_series[0], time_series[-1])
+# plt.title("speed of left front foot (low-pass filtered)")
+# plt.xlabel("time(s)")
+# plt.ylabel("speed in x direction(cm/s)")
+# plt.grid(False)
+# plt.tight_layout()
+# plt.show()
 
-plt.figure(figsize=(12, 12))
+# plt.figure(figsize=(12, 12))
 
-plt.subplot(4, 1, 1)
-plt.plot(time_series, ffl_x_before, label='x distance of Left front Foot (Before Interpolation)', color='k', alpha=0.7)
-plt.plot(time_series, ffl_x, label='x distance of Left front Foot (After Interpolation)', color='r', alpha=0.7)
-plt.plot(time_series, ffl_x_smoothed, label='x distance of Left front Foot (After Smoothing)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_ffl_x, label='x distance of Left front Foot (After Low-pass Filter)', color='g', alpha=0.7)
-plt.title("x distance of Left Front Foot Before vs. After Interpolation vs. Smooth")
-# plt.xlim(time_series[-1000], time_series[-1])
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 1)
+# plt.plot(time_series, ffl_x_before, label='x distance of Left front Foot (Before Interpolation)', color='k', alpha=0.7)
+# plt.plot(time_series, ffl_x, label='x distance of Left front Foot (After Interpolation)', color='r', alpha=0.7)
+# plt.plot(time_series, ffl_x_smoothed, label='x distance of Left front Foot (After Smoothing)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_ffl_x, label='x distance of Left front Foot (After Low-pass Filter)', color='g', alpha=0.7)
+# plt.title("x distance of Left Front Foot Before vs. After Interpolation vs. Smooth")
+# # plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.subplot(4, 1, 2)
-plt.plot(time_series, ffr_x_before, label='x distance of Right front Foot (Before Interpolation)', color='k', alpha=0.7)
-plt.plot(time_series, ffr_x, label='x distance of Right front Foot (After Interpolation)', color='r', alpha=0.7)
-plt.plot(time_series, ffr_x_smoothed, label='x distance of Right front Foot (After Smoothing)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_ffr_x, label='x distance of Right front Foot (After Low-pass Filter)', color='g', alpha=0.7)
-plt.title("x distance of Right Front Foot Before vs. After Interpolation vs. Smooth")
-# plt.xlim(time_series[-1000], time_series[-1])
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 2)
+# plt.plot(time_series, ffr_x_before, label='x distance of Right front Foot (Before Interpolation)', color='k', alpha=0.7)
+# plt.plot(time_series, ffr_x, label='x distance of Right front Foot (After Interpolation)', color='r', alpha=0.7)
+# plt.plot(time_series, ffr_x_smoothed, label='x distance of Right front Foot (After Smoothing)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_ffr_x, label='x distance of Right front Foot (After Low-pass Filter)', color='g', alpha=0.7)
+# plt.title("x distance of Right Front Foot Before vs. After Interpolation vs. Smooth")
+# # plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.subplot(4, 1, 3)
-plt.plot(time_series, fhl_x_before, label='x distance of Left hint Foot (Before Interpolation)', color='k', alpha=0.7)
-plt.plot(time_series, fhl_x, label='x distance of Left hint Foot (After Interpolation)', color='r', alpha=0.7)
-plt.plot(time_series, fhl_x_smoothed, label='x distance of Left hint Foot (After Smoothing)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_fhl_x, label='x distance of Left hint Foot (After Low-pass Filter)', color='g', alpha=0.7)
-plt.title("x distance of Left Hint Foot Before vs. After Interpolation vs. Smooth")
-# plt.xlim(time_series[-1000], time_series[-1])
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 3)
+# plt.plot(time_series, fhl_x_before, label='x distance of Left hint Foot (Before Interpolation)', color='k', alpha=0.7)
+# plt.plot(time_series, fhl_x, label='x distance of Left hint Foot (After Interpolation)', color='r', alpha=0.7)
+# plt.plot(time_series, fhl_x_smoothed, label='x distance of Left hint Foot (After Smoothing)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_fhl_x, label='x distance of Left hint Foot (After Low-pass Filter)', color='g', alpha=0.7)
+# plt.title("x distance of Left Hint Foot Before vs. After Interpolation vs. Smooth")
+# # plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.subplot(4, 1, 4)
-plt.plot(time_series, fhr_x_before, label='x distance of Right hint Foot (Before Interpolation)', color='k', alpha=0.7)
-plt.plot(time_series, fhr_x, label='x distance of Right hint Foot (After Interpolation)', color='r', alpha=0.7)
-plt.plot(time_series, fhr_x_smoothed, label='x distance of Right hint Foot (After Smoothing)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_fhr_x, label='x distance of Right hint Foot (After Low-pass Filter)', color='g', alpha=0.7)
-plt.title("x distance of Right Hint Foot Before vs. After Interpolation vs. Smooth")
-# plt.xlim(time_series[-1000], time_series[-1])
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 4)
+# plt.plot(time_series, fhr_x_before, label='x distance of Right hint Foot (Before Interpolation)', color='k', alpha=0.7)
+# plt.plot(time_series, fhr_x, label='x distance of Right hint Foot (After Interpolation)', color='r', alpha=0.7)
+# plt.plot(time_series, fhr_x_smoothed, label='x distance of Right hint Foot (After Smoothing)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_fhr_x, label='x distance of Right hint Foot (After Low-pass Filter)', color='g', alpha=0.7)
+# plt.title("x distance of Right Hint Foot Before vs. After Interpolation vs. Smooth")
+# # plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
 peak_prominences = 5*Coefficient
 
@@ -413,104 +458,104 @@ valleysfhr_x_low_pass, _ = find_peaks(-low_pass_fhr_x, distance=5, prominence=pe
 
 shift_values = 400*Coefficient
 
-plt.figure(figsize=(12, 12))
-plt.subplot(4, 1, 1)
-plt.plot(time_series, ffl_x+shift_values, label='x distance of Left front Foot', color='k', alpha=0.7)
-plt.plot(time_series, ffl_x_smoothed, label='x distance of Left front Foot (Smoothed)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_ffl_x-shift_values, label='x distance of Left front Foot (Low-pass Filtered)', color='g', alpha=0.7)
-plt.plot(np.array(time_series)[peaksffl_x], ffl_x[peaksffl_x]+shift_values, "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleysffl_x], ffl_x[valleysffl_x]+shift_values, "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaks_ffl_x_smoothed], ffl_x_smoothed[peaks_ffl_x_smoothed], "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleys_ffl_x_smoothed], ffl_x_smoothed[valleys_ffl_x_smoothed], "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaksffl_x_low_pass], low_pass_ffl_x[peaksffl_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
-plt.plot(np.array(time_series)[valleysffl_x_low_pass], low_pass_ffl_x[valleysffl_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-plt.xlim(time_series[-1000], time_series[-1])
-plt.title("Detected Peaks and Valleys in Left Front Foot x distance")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
+# plt.figure(figsize=(12, 12))
+# plt.subplot(4, 1, 1)
+# plt.plot(time_series, ffl_x+shift_values, label='x distance of Left front Foot', color='k', alpha=0.7)
+# plt.plot(time_series, ffl_x_smoothed, label='x distance of Left front Foot (Smoothed)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_ffl_x-shift_values, label='x distance of Left front Foot (Low-pass Filtered)', color='g', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksffl_x], ffl_x[peaksffl_x]+shift_values, "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleysffl_x], ffl_x[valleysffl_x]+shift_values, "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaks_ffl_x_smoothed], ffl_x_smoothed[peaks_ffl_x_smoothed], "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleys_ffl_x_smoothed], ffl_x_smoothed[valleys_ffl_x_smoothed], "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaksffl_x_low_pass], low_pass_ffl_x[peaksffl_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
+# plt.plot(np.array(time_series)[valleysffl_x_low_pass], low_pass_ffl_x[valleysffl_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
+# plt.xlim(time_series[-1000], time_series[-1])
+# plt.title("Detected Peaks and Valleys in Left Front Foot x distance")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
 # plt.legend()
-plt.grid(False)
+# plt.grid(False)
 
-plt.subplot(4, 1, 2)
-plt.plot(time_series, ffr_x+shift_values, label='x distance of Right front Foot', color='k', alpha=0.7)
-plt.plot(time_series, ffr_x_smoothed, label='x distance of Right front Foot (Smoothed)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_ffr_x-shift_values, label='x distance of Right front Foot (Low-pass Filtered)', color='g', alpha=0.7)
-plt.plot(np.array(time_series)[peaksffr_x], ffr_x[peaksffr_x]+shift_values, "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleysffr_x], ffr_x[valleysffr_x]+shift_values, "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaks_ffr_x_smoothed], ffr_x_smoothed[peaks_ffr_x_smoothed], "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleys_ffr_x_smoothed], ffr_x_smoothed[valleys_ffr_x_smoothed], "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaksffr_x_low_pass], low_pass_ffr_x[peaksffr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
-plt.plot(np.array(time_series)[valleysffr_x_low_pass], low_pass_ffr_x[valleysffr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-plt.xlim(time_series[-1000], time_series[-1])
-plt.title("Detected Peaks and Valleys in Right Front Foot x distance")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 2)
+# plt.plot(time_series, ffr_x+shift_values, label='x distance of Right front Foot', color='k', alpha=0.7)
+# plt.plot(time_series, ffr_x_smoothed, label='x distance of Right front Foot (Smoothed)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_ffr_x-shift_values, label='x distance of Right front Foot (Low-pass Filtered)', color='g', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksffr_x], ffr_x[peaksffr_x]+shift_values, "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleysffr_x], ffr_x[valleysffr_x]+shift_values, "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaks_ffr_x_smoothed], ffr_x_smoothed[peaks_ffr_x_smoothed], "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleys_ffr_x_smoothed], ffr_x_smoothed[valleys_ffr_x_smoothed], "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaksffr_x_low_pass], low_pass_ffr_x[peaksffr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
+# plt.plot(np.array(time_series)[valleysffr_x_low_pass], low_pass_ffr_x[valleysffr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
+# plt.xlim(time_series[-1000], time_series[-1])
+# plt.title("Detected Peaks and Valleys in Right Front Foot x distance")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.subplot(4, 1, 3)
-plt.plot(time_series, fhl_x+shift_values, label='x distance of Left hint Foot', color='k', alpha=0.7)
-plt.plot(time_series, fhl_x_smoothed, label='x distance of Left hint Foot (Smoothed)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_fhl_x-shift_values, label='x distance of Left hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
-plt.plot(np.array(time_series)[peaksfhl_x], fhl_x[peaksfhl_x]+shift_values, "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleysfhl_x], fhl_x[valleysfhl_x]+shift_values, "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaks_fhl_x_smoothed], fhl_x_smoothed[peaks_fhl_x_smoothed], "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleys_fhl_x_smoothed], fhl_x_smoothed[valleys_fhl_x_smoothed], "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaksfhl_x_low_pass], low_pass_fhl_x[peaksfhl_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
-plt.plot(np.array(time_series)[valleysfhl_x_low_pass], low_pass_fhl_x[valleysfhl_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-plt.xlim(time_series[-1000], time_series[-1])
-plt.title("Detected Peaks and Valleys in Left Hint Foot x distance")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 3)
+# plt.plot(time_series, fhl_x+shift_values, label='x distance of Left hint Foot', color='k', alpha=0.7)
+# plt.plot(time_series, fhl_x_smoothed, label='x distance of Left hint Foot (Smoothed)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_fhl_x-shift_values, label='x distance of Left hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksfhl_x], fhl_x[peaksfhl_x]+shift_values, "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleysfhl_x], fhl_x[valleysfhl_x]+shift_values, "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaks_fhl_x_smoothed], fhl_x_smoothed[peaks_fhl_x_smoothed], "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleys_fhl_x_smoothed], fhl_x_smoothed[valleys_fhl_x_smoothed], "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaksfhl_x_low_pass], low_pass_fhl_x[peaksfhl_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
+# plt.plot(np.array(time_series)[valleysfhl_x_low_pass], low_pass_fhl_x[valleysfhl_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
+# plt.xlim(time_series[-1000], time_series[-1])
+# plt.title("Detected Peaks and Valleys in Left Hint Foot x distance")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.subplot(4, 1, 4)
-plt.plot(time_series, fhr_x+shift_values, label='x distance of Right hint Foot', color='k', alpha=0.7)
-plt.plot(time_series, fhr_x_smoothed, label='x distance of Right hint Foot (Smoothed)', color='b', alpha=0.7)
-plt.plot(time_series, low_pass_fhr_x-shift_values, label='x distance of Right hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
-plt.plot(np.array(time_series)[peaksfhr_x], fhr_x[peaksfhr_x]+shift_values, "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleysfhr_x], fhr_x[valleysfhr_x]+shift_values, "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaks_fhr_x_smoothed], fhr_x_smoothed[peaks_fhr_x_smoothed], "x", label='Peaks', color='r')
-plt.plot(np.array(time_series)[valleys_fhr_x_smoothed], fhr_x_smoothed[valleys_fhr_x_smoothed], "o", label='Valleys', color='g')
-plt.plot(np.array(time_series)[peaksfhr_x_low_pass], low_pass_fhr_x[peaksfhr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
-plt.plot(np.array(time_series)[valleysfhr_x_low_pass], low_pass_fhr_x[valleysfhr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-plt.xlim(time_series[-1000], time_series[-1])
-plt.title("Detected Peaks and Valleys in Right Hint Foot x distance")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
-plt.legend()
-plt.grid(False)
+# plt.subplot(4, 1, 4)
+# plt.plot(time_series, fhr_x+shift_values, label='x distance of Right hint Foot', color='k', alpha=0.7)
+# plt.plot(time_series, fhr_x_smoothed, label='x distance of Right hint Foot (Smoothed)', color='b', alpha=0.7)
+# plt.plot(time_series, low_pass_fhr_x-shift_values, label='x distance of Right hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksfhr_x], fhr_x[peaksfhr_x]+shift_values, "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleysfhr_x], fhr_x[valleysfhr_x]+shift_values, "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaks_fhr_x_smoothed], fhr_x_smoothed[peaks_fhr_x_smoothed], "x", label='Peaks', color='r')
+# plt.plot(np.array(time_series)[valleys_fhr_x_smoothed], fhr_x_smoothed[valleys_fhr_x_smoothed], "o", label='Valleys', color='g')
+# plt.plot(np.array(time_series)[peaksfhr_x_low_pass], low_pass_fhr_x[peaksfhr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
+# plt.plot(np.array(time_series)[valleysfhr_x_low_pass], low_pass_fhr_x[valleysfhr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
+# plt.xlim(time_series[-1000], time_series[-1])
+# plt.title("Detected Peaks and Valleys in Right Hint Foot x distance")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
+# plt.legend()
+# plt.grid(False)
 
-plt.tight_layout()
-plt.show()
+# plt.tight_layout()
+# plt.show()
 
-plt.figure(figsize=(10, 6))
-plt.plot(time_series, low_pass_ffl_x-shift_values, label='x distance of Left front Foot (Low-pass Filtered)', color='k', alpha=0.7)
-plt.plot(np.array(time_series)[peaksffl_x_low_pass], low_pass_ffl_x[peaksffl_x_low_pass]-shift_values, "x", color='r')
-plt.plot(np.array(time_series)[valleysffl_x_low_pass], low_pass_ffl_x[valleysffl_x_low_pass]-shift_values, "o", color='g')
+# plt.figure(figsize=(10, 6))
+# plt.plot(time_series, low_pass_ffl_x-shift_values, label='x distance of Left front Foot (Low-pass Filtered)', color='k', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksffl_x_low_pass], low_pass_ffl_x[peaksffl_x_low_pass]-shift_values, "x", color='r')
+# plt.plot(np.array(time_series)[valleysffl_x_low_pass], low_pass_ffl_x[valleysffl_x_low_pass]-shift_values, "o", color='g')
 
-plt.plot(time_series, low_pass_ffr_x, label='x distance of Right front Foot (Low-pass Filtered)', color='b', alpha=0.7)
-plt.plot(np.array(time_series)[peaksffr_x_low_pass], low_pass_ffr_x[peaksffr_x_low_pass], "x", color='r')
-plt.plot(np.array(time_series)[valleysffr_x_low_pass], low_pass_ffr_x[valleysffr_x_low_pass], "o", color='g')
+# plt.plot(time_series, low_pass_ffr_x, label='x distance of Right front Foot (Low-pass Filtered)', color='b', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksffr_x_low_pass], low_pass_ffr_x[peaksffr_x_low_pass], "x", color='r')
+# plt.plot(np.array(time_series)[valleysffr_x_low_pass], low_pass_ffr_x[valleysffr_x_low_pass], "o", color='g')
 
-plt.plot(time_series, low_pass_fhl_x, label='x distance of Left hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
-plt.plot(np.array(time_series)[peaksfhl_x_low_pass], low_pass_fhl_x[peaksfhl_x_low_pass], "x", color='r')
-plt.plot(np.array(time_series)[valleysfhl_x_low_pass], low_pass_fhl_x[valleysfhl_x_low_pass], "o", color='g')
+# plt.plot(time_series, low_pass_fhl_x, label='x distance of Left hint Foot (Low-pass Filtered)', color='g', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksfhl_x_low_pass], low_pass_fhl_x[peaksfhl_x_low_pass], "x", color='r')
+# plt.plot(np.array(time_series)[valleysfhl_x_low_pass], low_pass_fhl_x[valleysfhl_x_low_pass], "o", color='g')
 
-plt.plot(time_series, low_pass_fhr_x+shift_values, label='x distance of Right hint Foot (Low-pass Filtered)', color='r', alpha=0.7)
-plt.plot(np.array(time_series)[peaksfhr_x_low_pass], low_pass_fhr_x[peaksfhr_x_low_pass]+shift_values, "x", label='Peaks (Low-pass)', color='r')
-plt.plot(np.array(time_series)[valleysfhr_x_low_pass], low_pass_fhr_x[valleysfhr_x_low_pass]+shift_values, "o", label='Valleys (Low-pass)', color='g')
+# plt.plot(time_series, low_pass_fhr_x+shift_values, label='x distance of Right hint Foot (Low-pass Filtered)', color='r', alpha=0.7)
+# plt.plot(np.array(time_series)[peaksfhr_x_low_pass], low_pass_fhr_x[peaksfhr_x_low_pass]+shift_values, "x", label='Peaks (Low-pass)', color='r')
+# plt.plot(np.array(time_series)[valleysfhr_x_low_pass], low_pass_fhr_x[valleysfhr_x_low_pass]+shift_values, "o", label='Valleys (Low-pass)', color='g')
 
-# plt.xlim(time_series[-10000], time_series[-8500])
-plt.title("Detected Peaks and Valleys in Four Feet x distance")
-plt.xlabel("Time(s)")
-plt.ylabel("X distance(cm)")
+# # plt.xlim(time_series[-10000], time_series[-8500])
+# plt.title("Detected Peaks and Valleys in Four Feet x distance")
+# plt.xlabel("Time(s)")
+# plt.ylabel("X distance(cm)")
 
-plt.legend()
-plt.grid(False)
-plt.tight_layout()
-plt.show()
+# plt.legend()
+# plt.grid(False)
+# plt.tight_layout()
+# plt.show()
 
 def plot_bout_peaks_valleys(bout_index, bout, time_series, low_pass_ffl_x, low_pass_ffr_x, 
                            low_pass_fhl_x, low_pass_fhr_x, peaksffl_x_low_pass, valleysffl_x_low_pass,
@@ -585,11 +630,11 @@ def plot_bout_peaks_valleys(bout_index, bout, time_series, low_pass_ffl_x, low_p
     print()
 
 print(f"Total movement bouts detected: {len(bouts)}")
-for i, bout in enumerate(bouts):
-    plot_bout_peaks_valleys(i, bout, time_series, low_pass_ffl_x, low_pass_ffr_x,
-                           low_pass_fhl_x, low_pass_fhr_x, peaksffl_x_low_pass, valleysffl_x_low_pass,
-                           peaksffr_x_low_pass, valleysffr_x_low_pass, peaksfhl_x_low_pass,
-                           valleysfhl_x_low_pass, peaksfhr_x_low_pass, valleysfhr_x_low_pass)
+# for i, bout in enumerate(bouts):
+#     plot_bout_peaks_valleys(i, bout, time_series, low_pass_ffl_x, low_pass_ffr_x,
+#                            low_pass_fhl_x, low_pass_fhr_x, peaksffl_x_low_pass, valleysffl_x_low_pass,
+#                            peaksffr_x_low_pass, valleysffr_x_low_pass, peaksfhl_x_low_pass,
+#                            valleysfhl_x_low_pass, peaksfhr_x_low_pass, valleysfhr_x_low_pass)
 
 def analyze_gait_pattern(bout_peaks_valleys, time_series, foot_names=['LF', 'RF', 'LH', 'RH']):
     all_events = []
@@ -708,7 +753,7 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
     ax1.set_xlabel('Time (s)', fontsize=11)
     ax1.set_ylabel('X Distance (cm)', fontsize=11)
     ax1.legend(loc='upper right')
-    ax1.grid(True, alpha=0.3)
+    ax1.grid(False)
     
     ax2 = fig.add_subplot(gs[1])
     foot_y_positions = {name: i for i, name in enumerate(foot_names)}
@@ -732,7 +777,7 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
     ax2.set_yticklabels(foot_names)
     ax2.set_xlabel('Time (s)', fontsize=11)
     ax2.set_title('Gait Event Sequence\n(delta Peak, delta Valley)', fontsize=12, fontweight='bold')
-    ax2.grid(True, axis='x', alpha=0.3)
+    ax2.grid(False)
     ax2.set_xlim(start_time, end_time)
     
     ax3 = fig.add_subplot(gs[2])
@@ -751,7 +796,7 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
         ax3.set_title('Inter-limb Phase Relationships', fontsize=12, fontweight='bold')
         ax3.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='Anti-phase (0.5)')
         ax3.legend()
-        ax3.grid(True, axis='y', alpha=0.3)
+        ax3.grid(False)
     
     
     print(f"Gait Cycle Statistics:\n\n")
@@ -782,22 +827,362 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
     return fig, gait_cycles, phase_relationships
 
 
-print(f"\n{'='*60}")
-print(f"Gait Cycle Analysis for {len(bouts)} Movement Bouts")
-print(f"{'='*60}\n")
+# print(f"\n{'='*60}")
+# print(f"Gait Cycle Analysis for {len(bouts)} Movement Bouts")
+# print(f"{'='*60}\n")
 
-for i, bout in enumerate(bouts):
-    low_pass_signals = [low_pass_ffl_x, low_pass_ffr_x, low_pass_fhl_x, low_pass_fhr_x]
-    peaks_list = [peaksffl_x_low_pass, peaksffr_x_low_pass, peaksfhl_x_low_pass, peaksfhr_x_low_pass]
-    valleys_list = [valleysffl_x_low_pass, valleysffr_x_low_pass, valleysfhl_x_low_pass, valleysfhr_x_low_pass]
+# for i, bout in enumerate(bouts):
+#     low_pass_signals = [low_pass_ffl_x, low_pass_ffr_x, low_pass_fhl_x, low_pass_fhr_x]
+#     peaks_list = [peaksffl_x_low_pass, peaksffr_x_low_pass, peaksfhl_x_low_pass, peaksfhr_x_low_pass]
+#     valleys_list = [valleysffl_x_low_pass, valleysffr_x_low_pass, valleysfhl_x_low_pass, valleysfhr_x_low_pass]
     
-    fig, gait_cycles, phase_rels = plot_gait_cycle_analysis(
-        i, bout, time_series, low_pass_signals, peaks_list, valleys_list,
-        shift_values, foot_names=['LF', 'RF', 'LH', 'RH'],
-        colors=['black', 'blue', 'green', 'red']
-    )
+#     fig, gait_cycles, phase_rels = plot_gait_cycle_analysis(
+#         i, bout, time_series, low_pass_signals, peaks_list, valleys_list,
+#         shift_values, foot_names=['LF', 'RF', 'LH', 'RH'],
+#         colors=['black', 'blue', 'green', 'red']
+#     )
     
+#     plt.show()
+    
+#     print(f"Bout {i + 1} Analysis Complete")
+#     print(f"-" * 60)
+
+def analyze_limb_trajectories_per_bout(bout_index, bout, time_series, 
+                                      low_pass_x_signals, low_pass_y_signals,
+                                      peaks_list, valleys_list,
+                                      foot_names=['LF', 'RF', 'LH', 'RH'],
+                                      colors=['black', 'blue', 'green', 'red']):
+    start_time, end_time = bout
+    bout_indices = np.where((np.array(time_series) >= start_time) & 
+                           (np.array(time_series) <= end_time))[0]
+    
+    if len(bout_indices) == 0:
+        return None, None
+    
+    bout_peaks_valleys = []
+    for i in range(4):
+        bout_peaks = [p for p in peaks_list[i] 
+                     if start_time <= time_series[p] <= end_time]
+        bout_valleys = [v for v in valleys_list[i] 
+                       if start_time <= time_series[v] <= end_time]
+        bout_peaks_valleys.append({
+            'peaks': sorted(bout_peaks),
+            'valleys': sorted(bout_valleys)
+        })
+    
+    pvp_sequences = {name: [] for name in foot_names}
+    
+    for i, name in enumerate(foot_names):
+        peaks = bout_peaks_valleys[i]['peaks']
+        valleys = bout_peaks_valleys[i]['valleys']
+        
+        for j in range(len(peaks) - 1):
+            current_peak = peaks[j]
+            next_peak = peaks[j + 1]
+            
+            between_valleys = [v for v in valleys if current_peak < v < next_peak]
+            
+            if between_valleys:
+                valley = between_valleys[0]
+                
+                sequence_indices = list(range(current_peak, next_peak + 1))
+                
+                if len(sequence_indices) > 1:
+                    x_trajectory = low_pass_x_signals[i][sequence_indices]
+                    y_trajectory = low_pass_y_signals[i][sequence_indices]
+                    
+                    if len(x_trajectory) > 10:
+                        norm_length = 100
+                        t_original = np.linspace(0, 1, len(x_trajectory))
+                        t_norm = np.linspace(0, 1, norm_length)
+                        
+                        x_norm = np.interp(t_norm, t_original, x_trajectory)
+                        y_norm = np.interp(t_norm, t_original, y_trajectory)
+                        
+                        pvp_sequences[name].append({
+                            'x': x_norm,
+                            'y': y_norm,
+                            'start_idx': current_peak,
+                            'valley_idx': valley,
+                            'end_idx': next_peak,
+                            'start_time': time_series[current_peak],
+                            'valley_time': time_series[valley],
+                            'end_time': time_series[next_peak]
+                        })
+    
+    return pvp_sequences, bout_peaks_valleys
+
+def plot_bout_trajectory_analysis(bout_index, bout, pvp_sequences, 
+                                 foot_names=['LF', 'RF', 'LH', 'RH'],
+                                 colors=['black', 'blue', 'green', 'red']):
+    if not any(len(sequences) > 0 for sequences in pvp_sequences.values()):
+        print(f"Bout {bout_index + 1}: No valid peak-valley-peak sequences found")
+        return
+    
+    fig = plt.figure(figsize=(9, 9))
+    
+    for i, name in enumerate(foot_names):
+        sequences = pvp_sequences[name]
+        if len(sequences) > 0:
+            all_x = np.array([seq['x'] for seq in sequences])
+            all_y = np.array([seq['y'] for seq in sequences])
+            
+            mean_x = np.mean(all_x, axis=0)
+            mean_y = np.mean(all_y, axis=0)
+            std_x = np.std(all_x, axis=0)
+            std_y = np.std(all_y, axis=0)
+            
+            plt.plot(mean_x, mean_y, color=colors[i], linewidth=2, 
+                    label=f'{name} (n={len(sequences)})')
+            
+            plt.fill_betweenx(mean_y, mean_x - std_x, mean_x + std_x, 
+                             color=colors[i], alpha=0.2)
+    
+    plt.xlabel('X Position (cm)')
+    plt.ylabel('Y Position (cm)')
+    plt.title(f'Bout {bout_index + 1}: Average P-V-P Trajectories\nwith Standard Deviation')
+    plt.legend()
+    plt.grid(False)
+    # plt.axis('equal')
     plt.show()
     
-    print(f"Bout {i + 1} Analysis Complete")
-    print(f"-" * 60)
+    fig = plt.figure(figsize=(9, 9))
+    
+    all_points = []
+    for i, name in enumerate(foot_names):
+        sequences = pvp_sequences[name]
+        for seq in sequences:
+            points = np.column_stack([seq['x'], seq['y']])
+            all_points.extend(points)
+    
+    if all_points:
+        all_points = np.array(all_points)
+        
+        x_min, x_max = all_points[:, 0].min(), all_points[:, 0].max()
+        y_min, y_max = all_points[:, 1].min(), all_points[:, 1].max()
+        
+        heatmap, xedges, yedges = np.histogram2d(all_points[:, 0], all_points[:, 1], 
+                                               bins=50, density=True)
+        
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+        im = plt.imshow(heatmap.T, extent=extent, origin='lower', 
+                       cmap='hot', aspect='auto')
+        # plt.colorbar(im, label='Density')
+        
+        plt.xlabel('X Position (cm)')
+        plt.ylabel('Y Position (cm)')
+        plt.title(f'Bout {bout_index + 1}: Spatial Distribution Heatmap')
+        # plt.axis('equal')
+
+    plt.show()
+    
+    fig = plt.figure(figsize=(9, 9))
+    
+    for i, name in enumerate(foot_names):
+        sequences = pvp_sequences[name]
+        for seq in sequences:
+            # plt.plot(seq['x'], seq['y'], color=colors[i], alpha=0.1, linewidth=0.5)
+            plt.scatter(seq['x'], seq['y'],color=colors[i], alpha=0.1, s=1)
+        
+        if sequences:
+            all_x = np.array([seq['x'] for seq in sequences])
+            all_y = np.array([seq['y'] for seq in sequences])
+            mean_x = np.mean(all_x, axis=0)
+            mean_y = np.mean(all_y, axis=0)
+            plt.plot(mean_x, mean_y, color=colors[i], linewidth=2, label=name)
+    
+    plt.xlabel('X Position (cm)')
+    plt.ylabel('Y Position (cm)')
+    plt.title(f'Bout {bout_index + 1}: Individual P-V-P Trajectories')
+    plt.legend()
+    plt.grid(False)
+    # plt.axis('equal')
+    plt.show()
+    
+    stats_text = f"Bout {bout_index + 1} Statistics:\n\n"
+    total_sequences = 0
+    
+    for name in foot_names:
+        sequences = pvp_sequences[name]
+        stats_text += f"{name}: {len(sequences)} sequences\n"
+        total_sequences += len(sequences)
+        
+        if sequences:
+            durations = [seq['end_time'] - seq['start_time'] for seq in sequences]
+            stats_text += f"  Duration: {np.mean(durations):.3f} ± {np.std(durations):.3f} s\n"
+            
+            distances = []
+            for seq in sequences:
+                dx = np.diff(seq['x'])
+                dy = np.diff(seq['y'])
+                distance = np.sum(np.sqrt(dx**2 + dy**2))
+                distances.append(distance)
+            
+            stats_text += f"  Distance: {np.mean(distances):.2f} ± {np.std(distances):.2f} cm\n\n"
+    
+    stats_text += f"Total sequences: {total_sequences}"
+    
+    print(stats_text)
+    
+    return fig
+
+def plot_all_bouts_trajectory_analysis(all_pvp_sequences, 
+                                      foot_names=['LF', 'RF', 'LH', 'RH'],
+                                      colors=['black', 'blue', 'green', 'red']):
+    combined_sequences = {name: [] for name in foot_names}
+    
+    for bout_data in all_pvp_sequences:
+        for name in foot_names:
+            if name in bout_data and bout_data[name]:
+                combined_sequences[name].extend(bout_data[name])
+    
+    if not any(len(sequences) > 0 for sequences in combined_sequences.values()):
+        print("No valid peak-valley-peak sequences found across all bouts")
+        return
+    
+    fig = plt.figure(figsize=(9, 9))
+
+    
+    for i, name in enumerate(foot_names):
+        sequences = combined_sequences[name]
+        if len(sequences) > 0:
+            all_x = np.array([seq['x'] for seq in sequences])
+            all_y = np.array([seq['y'] for seq in sequences])
+            
+            mean_x = np.mean(all_x, axis=0)
+            mean_y = np.mean(all_y, axis=0)
+            std_x = np.std(all_x, axis=0)
+            std_y = np.std(all_y, axis=0)
+            
+            plt.plot(mean_x, mean_y, color=colors[i], linewidth=2, 
+                    label=f'{name} (n={len(sequences)})')
+            
+            plt.fill_betweenx(mean_y, mean_x - std_x, mean_x + std_x, 
+                             color=colors[i], alpha=0.2)
+    
+    plt.xlabel('X Position (cm)')
+    plt.ylabel('Y Position (cm)')
+    plt.title('All Bouts: Average P-V-P Trajectories\nwith Standard Deviation')
+    plt.legend()
+    plt.grid(False)
+    # plt.axis('equal')
+    plt.show()
+    
+    fig = plt.figure(figsize=(9, 9))
+    
+    all_points = []
+    for i, name in enumerate(foot_names):
+        sequences = combined_sequences[name]
+        for seq in sequences:
+            points = np.column_stack([seq['x'], seq['y']])
+            all_points.extend(points)
+    
+    if all_points:
+        all_points = np.array(all_points)
+        
+        x_min, x_max = all_points[:, 0].min(), all_points[:, 0].max()
+        y_min, y_max = all_points[:, 1].min(), all_points[:, 1].max()
+        
+        heatmap, xedges, yedges = np.histogram2d(all_points[:, 0], all_points[:, 1], 
+                                               bins=50, density=True)
+        
+        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
+        im = plt.imshow(heatmap.T, extent=extent, origin='lower', 
+                       cmap='hot', aspect='auto')
+        # plt.colorbar(im, label='Density')
+        
+        plt.xlabel('X Position (cm)')
+        plt.ylabel('Y Position (cm)')
+        plt.title('All Bouts: Spatial Distribution Heatmap')
+        # plt.axis('equal')
+    
+    plt.show()
+
+    fig = plt.figure(figsize=(9, 9))
+    
+    for i, name in enumerate(foot_names):
+        sequences = combined_sequences[name]
+        for seq in sequences:
+            # plt.plot(seq['x'], seq['y'], color=colors[i], alpha=0.1, linewidth=0.5)
+            plt.scatter(seq['x'], seq['y'],color=colors[i], alpha=0.1, s=1)
+        
+        if sequences:
+            all_x = np.array([seq['x'] for seq in sequences])
+            all_y = np.array([seq['y'] for seq in sequences])
+            mean_x = np.mean(all_x, axis=0)
+            mean_y = np.mean(all_y, axis=0)
+            plt.plot(mean_x, mean_y, color=colors[i], linewidth=2, label=name)
+    
+    plt.xlabel('X Position (cm)')
+    plt.ylabel('Y Position (cm)')
+    plt.title('All Bouts: Individual P-V-P Trajectories')
+    plt.legend()
+    plt.grid(False)
+    # plt.axis('equal')
+    plt.show()
+    
+    stats_text = "All Bouts Combined Statistics:\n\n"
+    total_sequences = 0
+    
+    for name in foot_names:
+        sequences = combined_sequences[name]
+        stats_text += f"{name}: {len(sequences)} sequences\n"
+        total_sequences += len(sequences)
+        
+        if sequences:
+            durations = [seq['end_time'] - seq['start_time'] for seq in sequences]
+            stats_text += f"  Duration: {np.mean(durations):.3f} ± {np.std(durations):.3f} s\n"
+            
+            distances = []
+            for seq in sequences:
+                dx = np.diff(seq['x'])
+                dy = np.diff(seq['y'])
+                distance = np.sum(np.sqrt(dx**2 + dy**2))
+                distances.append(distance)
+            
+            stats_text += f"  Distance: {np.mean(distances):.2f} ± {np.std(distances):.2f} cm\n\n"
+    
+    stats_text += f"Total sequences across all bouts: {total_sequences}\n"
+    stats_text += f"Total bouts analyzed: {len(all_pvp_sequences)}"
+    
+    print(stats_text)
+    
+    return fig
+
+print(f"\n{'='*60}")
+print(f"Peak-Valley-Peak Trajectory Analysis for {len(bouts)} Movement Bouts")
+print(f"{'='*60}\n")
+
+low_pass_x_signals = [low_pass_ffl_x, low_pass_ffr_x, low_pass_fhl_x, low_pass_fhr_x]
+low_pass_y_signals = [low_pass_ffl_y, low_pass_ffr_y, low_pass_fhl_y, low_pass_fhr_y]
+peaks_list = [peaksffl_x_low_pass, peaksffr_x_low_pass, peaksfhl_x_low_pass, peaksfhr_x_low_pass]
+valleys_list = [valleysffl_x_low_pass, valleysffr_x_low_pass, valleysfhl_x_low_pass, valleysfhr_x_low_pass]
+
+all_bouts_pvp_sequences = []
+
+for i, bout in enumerate(bouts):
+    print(f"Analyzing trajectories for Bout {i + 1}...")
+    
+    pvp_sequences, bout_peaks_valleys = analyze_limb_trajectories_per_bout(
+        i, bout, time_series, low_pass_x_signals, low_pass_y_signals,
+        peaks_list, valleys_list
+    )
+    
+    if pvp_sequences is not None:
+        all_bouts_pvp_sequences.append(pvp_sequences)
+        
+        fig = plot_bout_trajectory_analysis(i, bout, pvp_sequences)
+        if fig is not None:
+            plt.show()
+    
+    print(f"Bout {i + 1} trajectory analysis completed")
+    print("-" * 50)
+
+if all_bouts_pvp_sequences:
+    print("\nGenerating combined analysis for all bouts...")
+    fig_all = plot_all_bouts_trajectory_analysis(all_bouts_pvp_sequences)
+    if fig_all is not None:
+        plt.show()
+    print("Combined analysis completed!")
+else:
+    print("No valid trajectory data found for analysis.")
