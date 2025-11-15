@@ -722,7 +722,9 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
         bout_peaks_valleys.append({'peaks': bout_peaks, 'valleys': bout_valleys})
     
     gait_cycles, all_events = analyze_gait_pattern(bout_peaks_valleys, time_series, foot_names)
+    # print(gait_cycles)
     phase_relationships = calculate_phase_relationships(gait_cycles, foot_names)
+    # print(phase_relationships)
     
     fig = plt.figure(figsize=(16, 9))
     gs = fig.add_gridspec(2, 1, hspace=0.4)
@@ -777,13 +779,16 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
     
     ax3 = fig.add_subplot(gs[1])
     phase_pairs = [k for k in phase_relationships.keys() if len(phase_relationships[k]) > 0]
+    # print(phase_pairs)
     
     if phase_pairs:
         x_pos = np.arange(len(phase_pairs))
         means = [np.mean(phase_relationships[k]) for k in phase_pairs]
         stds = [np.std(phase_relationships[k]) for k in phase_pairs]
+        n = len(phase_relationships)
+        sems = stds / np.sqrt(n)
         
-        bars = ax3.bar(x_pos, means, yerr=stds, capsize=5, alpha=0.7,
+        bars = ax3.bar(x_pos, means, yerr=sems, capsize=5, alpha=0.7,
                       color=['steelblue', 'coral', 'lightgreen', 'plum', 'gold', 'cyan'][:len(phase_pairs)])
         ax3.set_xticks(x_pos)
         ax3.set_xticklabels(phase_pairs, rotation=45, ha='right')
@@ -793,7 +798,7 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
         ax3.legend()
         ax3.grid(False)
     
-    
+
     print(f"Gait Cycle Statistics:\n\n")
     print(f"Total Cycles (LF reference): {len([c for c in gait_cycles if c['reference_foot'] == 'LF'])}\n")
     
@@ -815,7 +820,9 @@ def plot_gait_cycle_analysis(bout_index, bout, time_series, low_pass_signals,
         if len(phase_relationships[pair]) > 0:
             mean_phase = np.mean(phase_relationships[pair])
             std_phase = np.std(phase_relationships[pair])
-            stats_text += f"  {pair}: {mean_phase:.3f} +/- {std_phase:.3f}\n"
+            n = len(phase_relationships[pair])
+            sem_phase = std_phase / np.sqrt(n)
+            stats_text += f"  {pair}: {mean_phase:.3f} +/- {sem_phase:.3f}\n"
     
     print(stats_text)
 
