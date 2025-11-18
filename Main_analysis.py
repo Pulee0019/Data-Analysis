@@ -9,6 +9,7 @@ import threading
 import traceback
 import fnmatch
 import signal
+import json
 import glob
 import time
 import sys
@@ -27,6 +28,30 @@ try:
 except ImportError:
     CV2_AVAILABLE = False
     log_message("OpenCV not installed, video export function unavailable. Please run 'pip install opencv-python' to install.", "WARNING")
+
+# Global channel memory
+CHANNEL_MEMORY_FILE = "channel_memory.json"
+channel_memory = {}
+
+def load_channel_memory():
+    """Load channel memory from file"""
+    global channel_memory
+    if os.path.exists(CHANNEL_MEMORY_FILE):
+        try:
+            with open(CHANNEL_MEMORY_FILE, 'r') as f:
+                channel_memory = json.load(f)
+        except:
+            channel_memory = {}
+
+def save_channel_memory():
+    """Save channel memory to file"""
+    try:
+        with open(CHANNEL_MEMORY_FILE, 'w') as f:
+            json.dump(channel_memory, f)
+    except:
+        pass
+
+load_channel_memory()
 
 class BodypartVisualizationWindow:
     def __init__(self, parent_frame, data):
@@ -1675,7 +1700,8 @@ class RunningVisualizationWindow:
         running_plot_window = None
 
 def import_multi_animals():
-    global selected_files, multi_animal_data
+    """Modified to support different experiment modes"""
+    global selected_files, multi_animal_data, current_experiment_mode
 
     base_dir = filedialog.askdirectory(title="Select Free Moving/Behavioural directory")
     if not base_dir:
@@ -1705,7 +1731,17 @@ def import_multi_animals():
                     'ast2': ['*.ast2']
                 }
 
+                # Determine required files based on mode
+                if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                    required_files = ['fiber', 'ast2']
+                else:  # FIBER_AST2_DLC
+                    required_files = ['dlc', 'fiber', 'ast2']
+
                 for file_type, file_patterns in patterns.items():
+                    # Skip DLC search if not needed
+                    if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                        continue
+                    
                     found_file = None
                     for root_path, dirs, files in os.walk(num_dir):
                         for file in files:
@@ -1725,17 +1761,17 @@ def import_multi_animals():
                     'files': files_found,
                     'processed': False,
                     'event_time_absolute': False,
-                    'active_channels': []
+                    'active_channels': [],
+                    'experiment_mode': current_experiment_mode
                 }
 
-                required_files = ['dlc', 'fiber', 'ast2']
                 if all(ft in files_found for ft in required_files):
                     if any(d['animal_id'] == animal_id for d in multi_animal_data):
                         log_message(f"Skip duplicate animal: {animal_id}")
                         continue
 
-                    # Process DLC file
-                    if 'dlc' in files_found:
+                    # Process DLC file (only if in full mode)
+                    if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and 'dlc' in files_found:
                         try:
                             dlc_data = read_dlc_file(files_found['dlc'])
                             animal_data['dlc_data'] = dlc_data
@@ -1781,15 +1817,16 @@ def import_multi_animals():
         if not selected_files:
             log_message("No valid animal data found in the selected directory", "WARNING")
         else:
-            log_message(f"Found {len(selected_files)} animals", "INFO")
-            # Show channel selection dialog for fiber data
+            mode_name = "Fiber+AST2" if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber+AST2+DLC"
+            log_message(f"Found {len(selected_files)} animals in {mode_name} mode", "INFO")
             show_channel_selection_dialog()
 
     except Exception as e:
         log_message(f"Failed to import data: {str(e)}", "ERROR")
 
 def import_single_animal():
-    global selected_files, multi_animal_data
+    """Modified to support different experiment modes"""
+    global selected_files, multi_animal_data, current_experiment_mode
 
     folder_path = filedialog.askdirectory(title="Select animal ear bar folder")
     if not folder_path:
@@ -1813,10 +1850,18 @@ def import_single_animal():
             'ast2': ['*.ast2']
         }
 
-        required_files = ['dlc', 'fiber', 'ast2']
+        # Determine required files based on mode
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+            required_files = ['fiber', 'ast2']
+        else:  # FIBER_AST2_DLC
+            required_files = ['dlc', 'fiber', 'ast2']
 
         files_found = {}
         for file_type, file_patterns in patterns.items():
+            # Skip DLC search if not needed
+            if file_type == 'dlc' and current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+                continue
+            
             found_file = None
             for root_path, dirs, files in os.walk(parent_folder_path):
                 for file in files:
@@ -1844,20 +1889,12 @@ def import_single_animal():
             'animal_id': animal_id,
             'files': files_found,
             'processed': False,
-            'event_time_absolute': False
+            'event_time_absolute': False,
+            'experiment_mode': current_experiment_mode
         }
 
-        if 'events' in files_found:
-            try:
-                event_data = pd.read_csv(files_found['events'])
-                start_offset = event_data['start_time'].iloc[0]
-                event_data['start_time'] = event_data['start_time'] - start_offset
-                event_data['end_time'] = event_data['end_time'] - start_offset
-                animal_data['event_data'] = event_data
-            except Exception as e:
-                log_message(f"Failed to load events for {animal_id}: {str(e)}", "ERROR")
-
-        if 'dlc' in files_found:
+        # Process DLC file (only if in full mode)
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and 'dlc' in files_found:
             try:
                 dlc_data = read_dlc_file(files_found['dlc'])
                 animal_data['dlc_data'] = dlc_data
@@ -1868,16 +1905,7 @@ def import_single_animal():
             except Exception as e:
                 log_message(f"Failed to load DLC for {animal_id}: {str(e)}", "ERROR")
 
-        if 'timestamp' in files_found:
-            try:
-                timestamps = pd.read_csv(files_found['timestamp'])
-                exp_start = timestamps[(timestamps['Device'] == 'Experiment') &
-                                    (timestamps['Action'] == 'Start')]['Timestamp'].values
-                if len(exp_start) > 0:
-                    animal_data['experiment_start'] = exp_start[0]
-            except Exception as e:
-                log_message(f"Failed to load timestamp for {animal_id}: {str(e)}", "ERROR")
-
+        # Process AST2 file
         if 'ast2' in files_found:
             try:
                 header, raw_data = h_AST2_readData(files_found['ast2'])
@@ -1899,6 +1927,7 @@ def import_single_animal():
             except Exception as e:
                 log_message(f"Failed to load AST2 for {animal_id}: {str(e)}", "ERROR")
 
+        # Process fiber data
         if 'fiber' in files_found:
             try:
                 fiber_result = load_fiber_data(files_found['fiber'])
@@ -1915,7 +1944,8 @@ def import_single_animal():
         if 'fiber_data' in animal_data:
             show_channel_selection_dialog()
         
-        log_message(f"Successfully added animal:{animal_id}", "INFO")
+        mode_name = "Fiber+AST2" if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber+AST2+DLC"
+        log_message(f"Successfully added animal: {animal_id} ({mode_name} mode)", "INFO")
 
     except Exception as e:
         log_message(f"Failed to add single animal: {str(e)}", "ERROR")
@@ -2004,82 +2034,88 @@ def load_fiber_data(file_path=None):
         return None
     
 def show_channel_selection_dialog():
-        dialog = tk.Toplevel(root)
-        dialog.title("Select Channels")
-        dialog.geometry("290x150")
-        dialog.transient(root)
-        dialog.grab_set()
-        
-        main_frame = ttk.Frame(dialog, padding=5)
-        main_frame.pack(fill="both", expand=True)
-        
-        canvas = tk.Canvas(main_frame)
-        canvas.config(height=50, width=100)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        global channel_vars
-        channel_vars = {}
-        
-        if multi_animal_data:
-            for animal_data in multi_animal_data:
-                if 'channel_data' not in animal_data:
-                    continue
-                    
-                animal_id = animal_data['animal_id']
-                group = animal_data.get('group', '')
-                label = f"{animal_id} ({group})" if group else animal_id
+    dialog = tk.Toplevel(root)
+    dialog.title("Select Channels")
+    dialog.geometry("290x150")
+    dialog.transient(root)
+    dialog.grab_set()
+    
+    main_frame = ttk.Frame(dialog, padding=5)
+    main_frame.pack(fill="both", expand=True)
+    
+    canvas = tk.Canvas(main_frame)
+    canvas.config(height=50, width=100)
+    scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+    
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    
+    global channel_vars
+    channel_vars = {}
+    
+    if multi_animal_data:
+        for animal_data in multi_animal_data:
+            if 'channel_data' not in animal_data:
+                continue
                 
-                animal_frame = ttk.LabelFrame(scrollable_frame, text=label)
-                animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
+            animal_id = animal_data['animal_id']
+            group = animal_data.get('group', '')
+            label = f"{animal_id} ({group})" if group else animal_id
+            
+            animal_frame = ttk.LabelFrame(scrollable_frame, text=label)
+            animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
+            
+            channel_vars[animal_id] = {}
+            
+            saved_channels = channel_memory.get(animal_id, [])
+            
+            for channel_num in sorted(animal_data['channel_data'].keys()):
+                default_value = channel_num in saved_channels or (not saved_channels and channel_num == 1)
+                var = tk.BooleanVar(value=default_value)
+                channel_vars[animal_id][channel_num] = var
                 
-                channel_vars[animal_id] = {}
+                chk = ttk.Checkbutton(
+                    animal_frame, 
+                    text=f"Channel {channel_num}",
+                    variable=var
+                )
+                chk.pack(anchor="w", padx=2, pady=2)
+    else:
+        if hasattr('channel_data') and channel_data:
+            animal_frame = ttk.LabelFrame(scrollable_frame, text="Single Animal")
+            animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
+            
+            channel_vars['single'] = {}
+            
+            saved_channels = channel_memory.get('single', [])
+            
+            for channel_num in sorted(channel_data.keys()):
+                default_value = channel_num in saved_channels or (not saved_channels and channel_num == 1)
+                var = tk.BooleanVar(value=default_value)
+                channel_vars['single'][channel_num] = var
                 
-                for channel_num in sorted(animal_data['channel_data'].keys()):
-                    var = tk.BooleanVar(value=(channel_num == 1))
-                    channel_vars[animal_id][channel_num] = var
-                    
-                    chk = ttk.Checkbutton(
-                        animal_frame, 
-                        text=f"Channel {channel_num}",
-                        variable=var
-                    )
-                    chk.pack(anchor="w", padx=2, pady=2)
-        else:
-            if hasattr('channel_data') and channel_data:
-                animal_frame = ttk.LabelFrame(scrollable_frame, text="Single Animal")
-                animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
-                
-                channel_vars['single'] = {}
-                
-                for channel_num in sorted(channel_data.keys()):
-                    var = tk.BooleanVar(value=(channel_num == 1))
-                    channel_vars['single'][channel_num] = var
-                    
-                    chk = ttk.Checkbutton(
-                        animal_frame, 
-                        text=f"Channel {channel_num}",
-                        variable=var
-                    )
-                    chk.pack(anchor="w", padx=2, pady=2)
-        
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(fill="x", pady=10)
-        
-        ttk.Button(btn_frame, text="Select All", command=lambda: toggle_all_channels(True)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-        ttk.Button(btn_frame, text="Deselect All", command=lambda: toggle_all_channels(False)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-        ttk.Button(btn_frame, text="Confirm", command=lambda: finalize_channel_selection(dialog)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
+                chk = ttk.Checkbutton(
+                    animal_frame, 
+                    text=f"Channel {channel_num}",
+                    variable=var
+                )
+                chk.pack(anchor="w", padx=2, pady=2)
+    
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(fill="x", pady=10)
+    
+    ttk.Button(btn_frame, text="Select All", command=lambda: toggle_all_channels(True)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+    ttk.Button(btn_frame, text="Deselect All", command=lambda: toggle_all_channels(False)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
+    ttk.Button(btn_frame, text="Confirm", command=lambda: finalize_channel_selection(dialog)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
 
 def toggle_all_channels(select):
     for animal_vars in channel_vars.values():
@@ -2087,6 +2123,7 @@ def toggle_all_channels(select):
             var.set(select)
 
 def finalize_channel_selection(dialog):
+    global channel_memory
     if multi_animal_data:
         for animal_data in multi_animal_data:
             animal_id = animal_data['animal_id']
@@ -2102,6 +2139,9 @@ def finalize_channel_selection(dialog):
                     return
                     
                 animal_data['active_channels'] = selected_channels
+                
+                channel_memory[animal_id] = selected_channels
+                
                 if 'fiber_data' not in animal_data or animal_data['fiber_data'] is None:
                     log_message(f"No fiber data available for {animal_id}, skipping alignment", "WARNING")
                     continue
@@ -2127,6 +2167,9 @@ def finalize_channel_selection(dialog):
         
         global active_channels
         active_channels = selected_channels
+        
+        channel_memory['single'] = selected_channels
+        
         if active_channels is None:
             active_channels = []
         
@@ -2136,6 +2179,8 @@ def finalize_channel_selection(dialog):
             if hasattr(globals(), 'fiber_data'):
                 globals()['fiber_data_trimmed'] = globals()['fiber_data']
 
+    save_channel_memory()
+    
     dialog.destroy()
     log_message("Selected channels for all animals")
     log_message(f"Processed {len(multi_animal_data)} animals")
@@ -2152,22 +2197,27 @@ def finalize_channel_selection(dialog):
             fiber_plot_window.update_plot()
 
 def align_data(animal_data=None):
-    """Align video, running and fiber data based on running data start and end time"""
+    """Modified align_data to support different experiment modes"""
+    global current_experiment_mode
+    
     try:
         # Determine which data to use
         if animal_data:
-            dlc_data = animal_data.get('dlc_data')
             fiber_data = animal_data.get('fiber_data')
             ast2_data = animal_data.get('ast2_data')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
+            experiment_mode = animal_data.get('experiment_mode', current_experiment_mode)
+            dlc_data = animal_data.get('dlc_data') if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC else None
         else:
-            dlc_data = dlc_data
-            fiber_data = fiber_data
-            ast2_data = ast2_data
-            channels = channels
-            active_channels = active_channels
+            fiber_data = globals().get('fiber_data')
+            ast2_data = globals().get('ast2_data')
+            channels = globals().get('channels', {})
+            active_channels = globals().get('active_channels', [])
+            experiment_mode = current_experiment_mode
+            dlc_data = globals().get('dlc_data') if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC else None
         
+        log_message(f"Alignment debug - Experiment mode: {experiment_mode}")
         log_message(f"Alignment debug - Fiber data: {fiber_data is not None}")
         log_message(f"Alignment debug - Channels: {channels}")
         log_message(f"Alignment debug - Active channels: {active_channels}")
@@ -2183,12 +2233,13 @@ def align_data(animal_data=None):
             log_message("No active channels selected, cannot align", "ERROR")
             return False
             
-        if dlc_data is None:
-            log_message("No DLC data available, cannot align", "ERROR")
-            return False
-            
         if ast2_data is None:
             log_message("No running data available, cannot align", "ERROR")
+            return False
+        
+        # DLC data is optional based on experiment mode
+        if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and dlc_data is None:
+            log_message("DLC mode selected but no DLC data available, cannot align", "ERROR")
             return False
         
         # Get events column from fiber data
@@ -2205,17 +2256,8 @@ def align_data(animal_data=None):
             log_message("Could not find Input2 events for running start", "ERROR")
             return False
         
-        # Find Input4 events (video markers) - video start time
-        input4_events = fiber_data[fiber_data[events_col].str.contains('Input4', na=False)]
-        if len(input4_events) < 1:
-            log_message("Could not find Input4 events for video start", "ERROR")
-            return False
-        
         # Get running start time (first Input2 event)
         running_start_time = input2_events[time_col].iloc[0]
-        
-        # Get video start time (first Input4 event)
-        video_start_time = input4_events[time_col].iloc[0]
         
         # Get fiber start time (first timestamp in fiber data)
         fiber_start_time = fiber_data[time_col].iloc[0]
@@ -2228,20 +2270,9 @@ def align_data(animal_data=None):
         log_message(f"Running start time: {running_start_time:.2f}s")
         log_message(f"Running end time: {running_end_time:.2f}s")
         log_message(f"Running duration: {running_duration:.2f}s")
-        log_message(f"Video start time: {video_start_time:.2f}s")
         log_message(f"Fiber start time: {fiber_start_time:.2f}s")
         
-        # Calculate video parameters
-        video_fps = 30  # Video sampling rate
-        video_total_frames = len(dlc_data[unique_bodyparts[0]]['x'])
-        video_duration = video_total_frames / video_fps
-        video_end_time = video_start_time + video_duration
-        
-        log_message(f"Video total frames: {video_total_frames}")
-        log_message(f"Video duration: {video_duration:.2f}s")
-        log_message(f"Video end time: {video_end_time:.2f}s")
-        
-        # Adjust all data relative to running start time
+        # Adjust fiber data relative to running start time
         fiber_data_adjusted = fiber_data.copy()
         fiber_data_adjusted[time_col] = fiber_data_adjusted[time_col] - running_start_time
         
@@ -2254,32 +2285,63 @@ def align_data(animal_data=None):
             log_message("Trimmed fiber data is empty after alignment", "ERROR")
             return False
         
-        # Trim video data to running duration
-        # Calculate which video frames fall within the running period
-        video_start_offset = video_start_time - running_start_time
-        video_end_offset = video_end_time - running_start_time
-        
-        # Only include video frames that are within the running period
+        # Initialize video-related variables
+        video_start_time = None
+        video_end_time = None
+        video_total_frames = 0
+        video_total_frames_trimmed = 0
+        video_fps = 30  # Default
+        video_start_offset = 0
+        dlc_data_trimmed = None
         valid_video_frames = []
-        for frame_idx in range(video_total_frames):
-            frame_time = video_start_offset + (frame_idx / video_fps)
-            if 0 <= frame_time <= running_duration:
-                valid_video_frames.append(frame_idx)
         
-        # Create trimmed DLC data with only valid frames
-        dlc_data_trimmed = {}
-        for bodypart, data in dlc_data.items():
-            dlc_data_trimmed[bodypart] = {
-                'x': data['x'][valid_video_frames],
-                'y': data['y'][valid_video_frames],
-                'likelihood': data['likelihood'][valid_video_frames]
-            }
-        
-        video_total_frames_trimmed = len(valid_video_frames)
-        
-        log_message(f"Trimmed video frames: {video_total_frames_trimmed}/{video_total_frames}")
-        log_message(f"Video start offset: {video_start_offset:.2f}s")
-        log_message(f"Video end offset: {video_end_offset:.2f}s")
+        # Process DLC data only in FIBER_AST2_DLC mode
+        if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and dlc_data is not None:
+            # Find Input4 events (video markers) - video start time
+            input4_events = fiber_data[fiber_data[events_col].str.contains('Input4', na=False)]
+            if len(input4_events) < 1:
+                log_message("Could not find Input4 events for video start", "WARNING")
+                log_message("Continuing without video alignment", "INFO")
+            else:
+                video_start_time = input4_events[time_col].iloc[0]
+                
+                # Calculate video parameters
+                unique_bodyparts = list(dlc_data.keys())
+                if unique_bodyparts:
+                    video_total_frames = len(dlc_data[unique_bodyparts[0]]['x'])
+                    video_duration = video_total_frames / video_fps
+                    video_end_time = video_start_time + video_duration
+                    
+                    log_message(f"Video start time: {video_start_time:.2f}s")
+                    log_message(f"Video total frames: {video_total_frames}")
+                    log_message(f"Video duration: {video_duration:.2f}s")
+                    log_message(f"Video end time: {video_end_time:.2f}s")
+                    
+                    # Trim video data to running duration
+                    video_start_offset = video_start_time - running_start_time
+                    video_end_offset = video_end_time - running_start_time
+                    
+                    # Only include video frames that are within the running period
+                    valid_video_frames = []
+                    for frame_idx in range(video_total_frames):
+                        frame_time = video_start_offset + (frame_idx / video_fps)
+                        if 0 <= frame_time <= running_duration:
+                            valid_video_frames.append(frame_idx)
+                    
+                    # Create trimmed DLC data with only valid frames
+                    dlc_data_trimmed = {}
+                    for bodypart, data in dlc_data.items():
+                        dlc_data_trimmed[bodypart] = {
+                            'x': data['x'][valid_video_frames],
+                            'y': data['y'][valid_video_frames],
+                            'likelihood': data['likelihood'][valid_video_frames]
+                        }
+                    
+                    video_total_frames_trimmed = len(valid_video_frames)
+                    
+                    log_message(f"Trimmed video frames: {video_total_frames_trimmed}/{video_total_frames}")
+                    log_message(f"Video start offset: {video_start_offset:.2f}s")
+                    log_message(f"Video end offset: {video_end_offset:.2f}s")
         
         # Adjust AST2 data relative to running start
         if ast2_data is not None:
@@ -2314,46 +2376,58 @@ def align_data(animal_data=None):
             animal_data.update({
                 'fiber_data_adjusted': fiber_data_adjusted,
                 'fiber_data_trimmed': fiber_data_trimmed,
-                'dlc_data_trimmed': dlc_data_trimmed,
                 'ast2_data_adjusted': ast2_data_adjusted,
                 'running_start_time': running_start_time,
                 'running_end_time': running_end_time,
                 'running_duration': running_duration,
-                'video_start_time': video_start_time,
-                'video_end_time': video_end_time,
-                'video_total_frames': video_total_frames_trimmed,  # Use trimmed frame count
-                'video_fps': video_fps,
-                'video_start_offset': video_start_offset,
                 'fiber_sampling_rate': 10,  # Assuming fiber sampling rate is 10 Hz
-                'ast2_sampling_rate': ast2_sampling_rate,
-                'valid_video_frames': valid_video_frames
+                'ast2_sampling_rate': ast2_sampling_rate
             })
-            # Replace original dlc_data with trimmed version for visualization
-            animal_data['dlc_data'] = dlc_data_trimmed
-        else:
-            fiber_data_adjusted = fiber_data_adjusted
-            fiber_data_trimmed = fiber_data_trimmed
-            dlc_data = dlc_data_trimmed  # Replace global dlc_data with trimmed version
-            parsed_data = dlc_data_trimmed  # Update parsed_data as well
-            ast2_data_adjusted = ast2_data_adjusted
-            running_start_time = running_start_time
-            running_end_time = running_end_time
-            running_duration = running_duration
-            video_start_time = video_start_time
-            video_end_time = video_end_time
-            video_total_frames = video_total_frames_trimmed
-            video_fps = video_fps
-            video_start_offset = video_start_offset
             
+            # Add DLC-related data only in FIBER_AST2_DLC mode
+            if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and dlc_data_trimmed is not None:
+                animal_data.update({
+                    'dlc_data_trimmed': dlc_data_trimmed,
+                    'video_start_time': video_start_time,
+                    'video_end_time': video_end_time,
+                    'video_total_frames': video_total_frames_trimmed,
+                    'video_fps': video_fps,
+                    'video_start_offset': video_start_offset,
+                    'valid_video_frames': valid_video_frames
+                })
+                # Replace original dlc_data with trimmed version for visualization
+                animal_data['dlc_data'] = dlc_data_trimmed
+        else:
+            globals()['fiber_data_adjusted'] = fiber_data_adjusted
+            globals()['fiber_data_trimmed'] = fiber_data_trimmed
+            globals()['ast2_data_adjusted'] = ast2_data_adjusted
+            globals()['running_start_time'] = running_start_time
+            globals()['running_end_time'] = running_end_time
+            globals()['running_duration'] = running_duration
+            
+            # Add DLC-related data only in FIBER_AST2_DLC mode
+            if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and dlc_data_trimmed is not None:
+                globals()['dlc_data'] = dlc_data_trimmed
+                globals()['parsed_data'] = dlc_data_trimmed
+                globals()['video_start_time'] = video_start_time
+                globals()['video_end_time'] = video_end_time
+                globals()['video_total_frames'] = video_total_frames_trimmed
+                globals()['video_fps'] = video_fps
+                globals()['video_start_offset'] = video_start_offset
+        
         # Display alignment information
         info_message = f"Data aligned successfully (running data as reference)!\n"
+        info_message += f"Experiment Mode: {experiment_mode}\n"
         info_message += f"Running start time: {running_start_time:.2f}s\n"
         info_message += f"Running end time: {running_end_time:.2f}s\n"
         info_message += f"Running duration: {running_duration:.2f}s\n"
-        info_message += f"Video start time: {video_start_time:.2f}s\n"
-        info_message += f"Video offset: {video_start_offset:.2f}s\n"
-        info_message += f"Video frames (original/trimmed): {video_total_frames}/{video_total_frames_trimmed}\n"
-        info_message += f"Video FPS: {video_fps}\n"
+        
+        if experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC and video_start_time is not None:
+            info_message += f"Video start time: {video_start_time:.2f}s\n"
+            info_message += f"Video offset: {video_start_offset:.2f}s\n"
+            info_message += f"Video frames (original/trimmed): {video_total_frames}/{video_total_frames_trimmed}\n"
+            info_message += f"Video FPS: {video_fps}\n"
+        
         info_message += f"Fiber sampling rate: 10 Hz\n"
         
         if ast2_sampling_rate is not None:
@@ -3114,29 +3188,43 @@ def create_bodypart_buttons(bodyparts):
     apply_fps_btn.pack(pady=3, padx=8, fill=tk.X)
 
 def main_visualization(animal_data=None):
+    """Modified to handle different experiment modes"""
     global parsed_data, visualization_window, fiber_plot_window, running_plot_window
+    global current_experiment_mode
     
     for widget in central_display_frame.winfo_children():
         widget.destroy()
     
     if animal_data is None:
-        if not hasattr(globals(), 'parsed_data') or not parsed_data:
-            log_message("No DLC data available for visualization", "WARNING")
-            return
-        
-        create_bodypart_buttons(list(parsed_data.keys()))
-        create_visualization_window()
+        # Using global data
+        if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
+            if not hasattr(globals(), 'parsed_data') or not parsed_data:
+                log_message("No DLC data available for visualization", "WARNING")
+                return
+            
+            create_bodypart_buttons(list(parsed_data.keys()))
+            create_visualization_window()
         
         create_fiber_visualization()
         create_running_visualization()
     else:
-        if 'dlc_data' not in animal_data or not animal_data['dlc_data']:
-            log_message("No DLC data available for visualization", "WARNING")
-            return
-
-        parsed_data = animal_data['dlc_data']
-        create_bodypart_buttons(list(parsed_data.keys()))
-        create_visualization_window()
+        # Using animal_data
+        animal_mode = animal_data.get('experiment_mode', EXPERIMENT_MODE_FIBER_AST2_DLC)
+        
+        if animal_mode == EXPERIMENT_MODE_FIBER_AST2_DLC:
+            if 'dlc_data' not in animal_data or not animal_data['dlc_data']:
+                log_message("No DLC data available for visualization", "WARNING")
+            else:
+                parsed_data = animal_data['dlc_data']
+                create_bodypart_buttons(list(parsed_data.keys()))
+                create_visualization_window()
+        else:
+            # Fiber+AST2 mode: show info message
+            info_label = tk.Label(central_display_frame, 
+                                 text="Fiber + AST2 Mode\n\nBodypart visualization not available\nSee fiber and running plots on the right",
+                                 bg="#f8f8f8", fg="#666666",
+                                 font=("Arial", 12))
+            info_label.pack(pady=100)
         
         create_fiber_visualization(animal_data)
         create_running_visualization(animal_data)
@@ -4022,7 +4110,136 @@ def init_multimodal_analysis():
     return multimodal_analyzer
 
 def select_experiment_mode():
-    print(1)
+    """Open dialog to select experiment mode"""
+    global current_experiment_mode
+    
+    mode_window = tk.Toplevel(root)
+    mode_window.title("Select Experiment Mode")
+    mode_window.geometry("400x400")
+    mode_window.transient(root)
+    mode_window.grab_set()
+    
+    # Title
+    title_label = tk.Label(mode_window, text="🔬 Experiment Mode Selection", 
+                          font=("Arial", 14, "bold"))
+    title_label.pack(pady=20)
+    
+    # Description
+    desc_label = tk.Label(mode_window, 
+                         text="Select the type of data you want to analyze:",
+                         font=("Arial", 10))
+    desc_label.pack(pady=5)
+    
+    # Mode selection frame
+    mode_frame = tk.Frame(mode_window)
+    mode_frame.pack(pady=20)
+    
+    mode_var = tk.StringVar(value=current_experiment_mode)
+    
+    # Mode 1: Fiber + AST2
+    mode1_radio = tk.Radiobutton(
+        mode_frame,
+        text="Fiber + AST2 (Running Only)",
+        variable=mode_var,
+        value=EXPERIMENT_MODE_FIBER_AST2,
+        font=("Arial", 10),
+        justify=tk.LEFT
+    )
+    mode1_radio.pack(anchor="w", pady=5)
+    
+    mode1_desc = tk.Label(mode_frame, 
+                         text="  • Fiber photometry data\n  • Running wheel data (AST2)",
+                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
+    mode1_desc.pack(anchor="w", padx=20)
+    
+    # Mode 2: Fiber + AST2 + DLC
+    mode2_radio = tk.Radiobutton(
+        mode_frame,
+        text="Fiber + AST2 + DLC (Full Analysis)",
+        variable=mode_var,
+        value=EXPERIMENT_MODE_FIBER_AST2_DLC,
+        font=("Arial", 10),
+        justify=tk.LEFT
+    )
+    mode2_radio.pack(anchor="w", pady=(15, 5))
+    
+    mode2_desc = tk.Label(mode_frame, 
+                         text="  • Fiber photometry data\n  • Running wheel data (AST2)\n  • DeepLabCut behavioral tracking",
+                         font=("Arial", 9), fg="gray", justify=tk.LEFT)
+    mode2_desc.pack(anchor="w", padx=20)
+    
+    def apply_mode():
+        global current_experiment_mode
+        new_mode = mode_var.get()
+        
+        # Check if there's existing data
+        if multi_animal_data:
+            response = tk.messagebox.askyesno(
+                "Confirm Mode Change",
+                "Changing experiment mode will clear all loaded data.\nDo you want to continue?"
+            )
+            if not response:
+                return
+            
+            # Clear existing data
+            clear_all()
+        
+        current_experiment_mode = new_mode
+        
+        # Update UI based on mode
+        update_ui_for_mode()
+        
+        mode_name = "Fiber + AST2" if new_mode == EXPERIMENT_MODE_FIBER_AST2 else "Fiber + AST2 + DLC"
+        log_message(f"Experiment mode set to: {mode_name}", "INFO")
+        
+        mode_window.destroy()
+    
+    # Button frame
+    button_frame = tk.Frame(mode_window)
+    button_frame.pack(pady=10)
+    
+    tk.Button(button_frame, text="Apply", command=apply_mode,
+             bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
+             padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+    
+    tk.Button(button_frame, text="Cancel", command=mode_window.destroy,
+             bg="#95a5a6", fg="white", font=("Arial", 10, "bold"),
+             padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+
+def update_ui_for_mode():
+    """Update UI elements based on current experiment mode"""
+    global current_experiment_mode
+    
+    # Update menu items
+    if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+        # Disable DLC-related menu items
+        behaviour_analysis_menu.entryconfig("Position Analysis", state="disabled")
+        behaviour_analysis_menu.entryconfig("Displacement Analysis", state="disabled")
+        behaviour_analysis_menu.entryconfig("X Displacement Analysis", state="disabled")
+        behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="disabled")
+        
+        # Update multimodal menu
+        multimodal_menu.entryconfig("LOCOMOTION Tratejory Analysis", state="disabled")
+        
+    else:  # FIBER_AST2_DLC mode
+        # Enable all menu items
+        behaviour_analysis_menu.entryconfig("Position Analysis", state="normal")
+        behaviour_analysis_menu.entryconfig("Displacement Analysis", state="normal")
+        behaviour_analysis_menu.entryconfig("X Displacement Analysis", state="normal")
+        behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="normal")
+        
+        multimodal_menu.entryconfig("LOCOMOTION Tratejory Analysis", state="normal")
+    
+    # Clear left panel if in Fiber+AST2 mode
+    if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
+        for widget in left_frame.winfo_children():
+            widget.destroy()
+        
+        info_label = tk.Label(left_frame, 
+                             text="Fiber + AST2 Mode\n\nBodypart tracking\nnot available",
+                             bg="#e0e0e0", fg="#666666",
+                             font=("Arial", 10))
+        info_label.pack(pady=50)
 
 def save_path_setting():
     print(1)
@@ -4041,6 +4258,11 @@ root.title("Behavior Syllable Analysis")
 root.state('zoomed')
 
 root.protocol("WM_DELETE_WINDOW", on_closing)
+
+# Experiment mode settings
+EXPERIMENT_MODE_FIBER_AST2 = "fiber+ast2"
+EXPERIMENT_MODE_FIBER_AST2_DLC = "fiber+ast2+dlc"
+current_experiment_mode = EXPERIMENT_MODE_FIBER_AST2_DLC  # Default mode
 
 target_signal_var = tk.StringVar(value="470")
 reference_signal_var = tk.StringVar(value="410")
