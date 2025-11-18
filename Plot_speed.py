@@ -184,20 +184,12 @@ kernel = np.ones(window_size) / window_size
 filtered_speed = np.convolve(speed, kernel, mode='same')
 
 plt.figure(figsize=(16,9))
-plt.subplot(2, 1, 1)
-plt.plot(timestamps, speed, label='speed on running wheel', color='g', alpha=0.7)
+plt.plot(timestamps, speed, label='raw speed', color='g', alpha=0.7)
+plt.plot(timestamps, filtered_speed, label='filted speed', color='r', alpha=0.7)
 plt.xlim(timestamps[0], timestamps[-1])
 plt.title("speed on treadmill")
 plt.xlabel("time(s)")
 plt.ylabel("speed(cm/s)")
 plt.grid(False)
-
-plt.subplot(2, 1, 2)
-plt.plot(timestamps, filtered_speed, label='speed on running wheel', color='g', alpha=0.7)
-plt.xlim(timestamps[0], timestamps[-1])
-plt.title("filtered speed on treadmill")
-plt.xlabel("time(s)")
-plt.ylabel("speed(cm/s)")
-plt.grid(False)
-
+plt.legend()
 plt.show()
