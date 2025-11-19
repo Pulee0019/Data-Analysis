@@ -1,4 +1,5 @@
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 from matplotlib.figure import Figure
 from tkinter import filedialog, ttk
 import matplotlib.pyplot as plt
@@ -250,6 +251,7 @@ class BodypartVisualizationWindow:
         
     def on_scroll(self, event):
         if event.inaxes != self.ax:
+            log_message("Scroll event outside axes, ignoring.", "WARNING")
             return
             
         try:
@@ -881,7 +883,7 @@ class FiberVisualizationWindow:
         resize_frame.bind("<B1-Motion>", self.do_resize)
         resize_frame.config(cursor="size_nw_se")
         
-        self.fig = Figure(figsize=(7, 4), dpi=90, facecolor='#f8f9fa')
+        self.fig = Figure(figsize=(3, 1), dpi=90, facecolor='#f8f9fa')
         self.ax = self.fig.add_subplot(111, facecolor='#ffffff')
         
         canvas_frame = tk.Frame(self.window_frame, bg="#f5f5f5", relief=tk.SUNKEN, bd=1)
@@ -889,10 +891,17 @@ class FiberVisualizationWindow:
         
         self.canvas = FigureCanvasTkAgg(self.fig, canvas_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
+        toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+        toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        for child in toolbar_frame.winfo_children():
+            if isinstance(child, tk.Button):
+                child.config(bg="#f5f5f5", fg="#666666", bd=0, padx=4, pady=2,
+                            activebackground="#e0e0e0", activeforeground="#000000")
+
         self.canvas.mpl_connect('button_press_event', self.on_click)
         self.canvas.mpl_connect('button_release_event', self.on_release)
-        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        # self.canvas.mpl_connect('motion_notify_event', self.on_motion)
         self.canvas.mpl_connect('scroll_event', self.on_scroll)
     
     def create_preprocessing_controls(self):
@@ -951,6 +960,7 @@ class FiberVisualizationWindow:
         
     def on_scroll(self, event):
         if event.inaxes != self.ax:
+            log_message("Scroll event outside axes, ignoring.", "WARNING")
             return
             
         try:
@@ -1426,7 +1436,7 @@ class RunningVisualizationWindow:
         resize_frame.bind("<B1-Motion>", self.do_resize)
         resize_frame.config(cursor="size_nw_se")
         
-        self.fig = Figure(figsize=(7, 4), dpi=90, facecolor='#f8f9fa')
+        self.fig = Figure(figsize=(3, 1), dpi=90, facecolor='#f8f9fa')
         self.ax = self.fig.add_subplot(111, facecolor='#ffffff')
         
         canvas_frame = tk.Frame(self.window_frame, bg="#f5f5f5", relief=tk.SUNKEN, bd=1)
@@ -1434,10 +1444,17 @@ class RunningVisualizationWindow:
         
         self.canvas = FigureCanvasTkAgg(self.fig, canvas_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
+        toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+        toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+        self.toolbar = NavigationToolbar2Tk(self.canvas, toolbar_frame)
+        for child in toolbar_frame.winfo_children():
+            if isinstance(child, tk.Button):
+                child.config(bg="#f5f5f5", fg="#666666", bd=0, padx=4, pady=2,
+                            activebackground="#e0e0e0", activeforeground="#000000")
+
         self.canvas.mpl_connect('button_press_event', self.on_click)
         self.canvas.mpl_connect('button_release_event', self.on_release)
-        self.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        # self.canvas.mpl_connect('motion_notify_event', self.on_motion)
         self.canvas.mpl_connect('scroll_event', self.on_scroll)
     
     def on_click(self, event):
@@ -1476,6 +1493,7 @@ class RunningVisualizationWindow:
         
     def on_scroll(self, event):
         if event.inaxes != self.ax:
+            log_message("Scroll event outside axes, ignoring.", "WARNING")
             return
             
         try:
