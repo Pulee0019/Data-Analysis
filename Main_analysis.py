@@ -1282,9 +1282,6 @@ class FiberVisualizationWindow:
         
         style = analysis_styles.get(self.current_analysis_type, {'color': 'gray', 'alpha': 0.5, 'label': 'Event'})
         
-        ymin, ymax = self.ax.get_ylim()
-        marker_height = ymax * 0.95
-        
         if self.current_analysis_type in ['movement_periods', 'rest_periods', 'continuous_locomotion_periods']:
             for i, (start, end) in enumerate(analysis_data):
                 self.ax.axvspan(start, end, alpha=style['alpha'], color=style['color'],
@@ -1294,12 +1291,6 @@ class FiberVisualizationWindow:
                 self.ax.axvline(x=event_time, color=style['color'], linestyle='--', 
                               alpha=style['alpha'], linewidth=2,
                               label=style['label'] if i == 0 else "")
-                self.ax.plot(event_time, marker_height, 'v', color=style['color'], 
-                          markersize=8, alpha=style['alpha'])
-        
-        self.ax.text(0.02, 0.98, f"Running: {style['label']}", 
-                    transform=self.ax.transAxes, fontsize=10, verticalalignment='top',
-                    bbox=dict(boxstyle='round', facecolor=style['color'], alpha=0.3))
 
     def update_running_analysis(self, analysis_type, analysis_data):
         self.current_analysis_type = analysis_type
