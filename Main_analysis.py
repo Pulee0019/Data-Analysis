@@ -20,7 +20,7 @@ import re
 from Behavior_analysis import position_analysis, displacement_analysis, x_displacement_analysis
 from Fiber_analysis import apply_preprocessing, calculate_and_plot_dff, calculate_and_plot_zscore
 from Running_analysis import classify_treadmill_behavior, preprocess_running_data
-from Multimodal_Analysis import MultimodalAnalysis
+from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis
 from logger import log_message, set_log_widget
 
 try:
@@ -1959,32 +1959,10 @@ def import_single_animal():
     except Exception as e:
         log_message(f"Failed to add single animal: {str(e)}", "ERROR")
 
-def clear_selected():
-    selected_indices = file_listbox.curselection()
-    for index in sorted(selected_indices, reverse=True):
-        animal_id = file_listbox.get(index)
-        file_listbox.delete(index)
-        
-        # Remove from selected_files and multi_animal_data
-        if index < len(selected_files):
-            animal_data = selected_files.pop(index)
-            # Find and remove from multi_animal_data
-            for i, data in enumerate(multi_animal_data):
-                if data['animal_id'] == animal_data['animal_id']:
-                    multi_animal_data.pop(i)
-                    break
-
-def clear_all():
-    file_listbox.delete(0, tk.END)
-    global selected_files
-    selected_files = []
-    global multi_animal_data
-    multi_animal_data = []
-
 def load_fiber_data(file_path=None):
     path = file_path
     try:
-        fiber_data = pd.read_csv(path, skiprows=1, delimiter=',')
+        fiber_data = pd.read_csv(path, skiprows=1, delimiter=',', low_memory=False)
         fiber_data = fiber_data.loc[:, ~fiber_data.columns.str.contains('^Unnamed')]
         fiber_data.columns = fiber_data.columns.str.strip()
 
@@ -3336,6 +3314,29 @@ def create_animal_list():
                             style="Accent.TButton")
     clear_all_btn.pack(fill="x", padx=2, pady=(1, 2))
 
+
+def clear_selected():
+    selected_indices = file_listbox.curselection()
+    for index in sorted(selected_indices, reverse=True):
+        animal_id = file_listbox.get(index)
+        file_listbox.delete(index)
+        
+        # Remove from selected_files and multi_animal_data
+        if index < len(selected_files):
+            animal_data = selected_files.pop(index)
+            # Find and remove from multi_animal_data
+            for i, data in enumerate(multi_animal_data):
+                if data['animal_id'] == animal_data['animal_id']:
+                    multi_animal_data.pop(i)
+                    break
+
+def clear_all():
+    file_listbox.delete(0, tk.END)
+    global selected_files
+    selected_files = []
+    global multi_animal_data
+    multi_animal_data = []
+
 def fiber_preprocessing():
     global preprocess_frame
     
@@ -4118,6 +4119,17 @@ def init_multimodal_analysis():
     multimodal_analyzer = MultimodalAnalysis(root, multi_animal_data, current_animal_index, selected_bodyparts)
     return multimodal_analyzer
 
+def initial_acrossday_analysis():
+    """Initial setup for across-day analysis"""
+    global across_day_analyzer, multi_animal_data, selected_bodyparts
+    
+    if not multi_animal_data or len(multi_animal_data) < 2:
+        log_message("Please load data from at least two days for across-day analysis", "ERROR")
+        return None
+    
+    across_day_analyzer = AcrossdayAnalysis(root, multi_animal_data)
+    return across_day_analyzer
+
 def select_experiment_mode():
     """Open dialog to select experiment mode"""
     global current_experiment_mode
@@ -4129,7 +4141,7 @@ def select_experiment_mode():
     mode_window.grab_set()
     
     # Title
-    title_label = tk.Label(mode_window, text="🔬 Experiment Mode Selection", 
+    title_label = tk.Label(mode_window, text="Experiment Mode Selection", 
                           font=("Arial", 14, "bold"))
     title_label.pack(pady=20)
     
@@ -4285,6 +4297,7 @@ baseline_model = tk.StringVar(value="Polynomial")
 apply_motion = tk.BooleanVar(value=False)
 preprocess_frame = None
 multimodal_analyzer = None
+accrossday_analyzer = None
 
 current_animal_index = 0
 fiber_plot_window = None
@@ -4396,6 +4409,8 @@ multimodal_menu.add_command(label="GENERAL ONSETS Fiber Anlysis",
                            command=lambda: init_multimodal_analysis().general_onsets_analysis())
 multimodal_menu.add_command(label="LOCOMOTION Tratejory Analysis", 
                            command=lambda: init_multimodal_analysis().continuous_locomotion_analysis())
+multimodal_menu.add_command(label="Accrossday Analysis",
+                            command=lambda: initial_acrossday_analysis())
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)
