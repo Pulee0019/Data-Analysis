@@ -969,6 +969,72 @@ class AcrossdayAnalysis:
             log_message("No data in the table to analyze", "WARNING")
             return
         
+        param_window = tk.Toplevel(self.analysis_window)
+        param_window.title("Acrossday Analysis Parameters")
+        param_window.geometry("300x200")
+        param_window.configure(bg='#f8f8f8')
+        param_window.transient(self.analysis_window)
+        param_window.grab_set()
+        
+        # Title
+        title_label = tk.Label(param_window, text="Time Window Settings", 
+                            font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8", fg="#2c3e50")
+        title_label.pack(pady=15)
+        
+        # Pre-time setting
+        pre_frame = tk.Frame(param_window, bg="#f8f8f8")
+        pre_frame.pack(pady=8)
+        tk.Label(pre_frame, text="Pre Time (s):", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
+        pre_time_var = tk.StringVar(value="30")
+        pre_time_entry = tk.Entry(pre_frame, textvariable=pre_time_var, width=10, 
+                                font=("Microsoft YaHei", 9))
+        pre_time_entry.pack(side=tk.LEFT, padx=5)
+        
+        # Post-time setting
+        post_frame = tk.Frame(param_window, bg="#f8f8f8")
+        post_frame.pack(pady=8)
+        tk.Label(post_frame, text="Post Time (s):", bg="#f8f8f8", 
+                font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
+        post_time_var = tk.StringVar(value="60")
+        post_time_entry = tk.Entry(post_frame, textvariable=post_time_var, width=10, 
+                                font=("Microsoft YaHei", 9))
+        post_time_entry.pack(side=tk.LEFT, padx=5)
+        
+        def start_with_params():
+            try:
+                pre_time = float(pre_time_var.get())
+                post_time = float(post_time_var.get())
+                
+                if pre_time <= 0 or post_time <= 0:
+                    log_message("Time must be positive numbers", "WARNING")
+                    return
+                    
+                param_window.destroy()
+                self._run_analysis_with_params(pre_time, post_time)
+                
+            except ValueError:
+                log_message("Please enter valid time values", "WARNING")
+        
+        # Buttons
+        button_frame = tk.Frame(param_window, bg="#f8f8f8")
+        button_frame.pack(pady=20)
+        
+        run_btn = tk.Button(button_frame, text="🚀 Start Analysis", command=start_with_params,
+                        bg="#3498db", fg="white", font=("Microsoft YaHei", 9, "bold"),
+                        relief=tk.FLAT, padx=15, pady=5)
+        run_btn.pack(side=tk.LEFT, padx=10)
+        
+        cancel_btn = tk.Button(button_frame, text="❌ Cancel", 
+                            command=param_window.destroy,
+                            bg="#95a5a6", fg="white", font=("Microsoft YaHei", 9),
+                            relief=tk.FLAT, padx=15, pady=5)
+        cancel_btn.pack(side=tk.LEFT, padx=10)
+
+    def _run_analysis_with_params(self, pre_time, post_time):
+        self.pre_time = pre_time
+        self.post_time = post_time
+        
         # Group animals by day
         day_data = {}
         for i in range(self.num_rows):
@@ -991,26 +1057,25 @@ class AcrossdayAnalysis:
             log_message("No valid data found for any day", "WARNING")
             return
         
-        log_message(f"Starting acrossday analysis for {len(day_data)} days...")
+        log_message(f"Starting acrossday analysis for {len(day_data)} days (pre={pre_time}s, post={post_time}s)...")
         
         # Perform analysis for each day
         results = {}
         for day_name, animals in day_data.items():
             log_message(f"Analyzing {day_name} with {len(animals)} animals...")
-            day_result = self.analyze_day(day_name, animals)
+            day_result = self.analyze_day(day_name, animals, pre_time, post_time)
             if day_result:
                 results[day_name] = day_result
         
         if results:
-            # **FIX 2: Store results before using them**
             self.results = results
             self.plot_results(results)
             log_message("Acrossday analysis completed successfully")
         else:
             log_message("Acrossday analysis failed, no valid results", "ERROR")
-    
-    def analyze_day(self, day_name, animals):
-        """Analyze data for one day"""
+
+    def analyze_day(self, day_name, animals, pre_time, post_time):
+        """Analyze data for one day with specified time windows"""
         all_running_episodes = []
         all_fiber_episodes = []
         
@@ -1041,7 +1106,7 @@ class AcrossdayAnalysis:
                 time_col = channels['time']
                 fiber_timestamps = preprocessed_data[time_col].values
                 
-                # **FIX 3: Properly handle dff_data format**
+                # Handle dff_data format
                 dff_data = animal_data['dff_data']
                 combined_dff_data = None
                 
@@ -1087,10 +1152,6 @@ class AcrossdayAnalysis:
                 if combined_dff_data is None:
                     log_message(f"Failed to extract dFF data for {animal_data.get('animal_id')}", "WARNING")
                     continue
-                
-                # Calculate episodes (using fixed time window: -30s to +60s)
-                pre_time = 30
-                post_time = 60
                 
                 # Running episodes
                 time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
