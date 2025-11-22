@@ -200,10 +200,19 @@ class MultimodalAnalysis:
         time_col = channels['time']
         fiber_timestamps = preprocessed_data[time_col]
         
-        # Check if dff_data is a Series or DataFrame
+        # **FIX 1: Properly handle dff_data format**
+        combined_dff_data = None
+        channel_label = ""
+        
+        # Check if dff_data is empty or None
+        if dff_data is None or (isinstance(dff_data, pd.DataFrame) and dff_data.empty):
+            log_message("No dFF data available", "ERROR")
+            return
+        
+        # Handle different dff_data formats
         if isinstance(dff_data, pd.Series):
             # Single channel - use directly
-            combined_dff_data = dff_data
+            combined_dff_data = dff_data.values
             channel_label = "1"
         elif isinstance(dff_data, pd.DataFrame):
             # Multiple channels - calculate average of selected channels
@@ -218,13 +227,39 @@ class MultimodalAnalysis:
                 return
             
             if len(valid_columns) == 1:
-                combined_dff_data = dff_data[valid_columns[0]]
+                combined_dff_data = dff_data[valid_columns[0]].values
             else:
-                combined_dff_data = dff_data[valid_columns].mean(axis=1)
+                combined_dff_data = dff_data[valid_columns].mean(axis=1).values
             
             channel_label = "+".join(selected_channels)
+        elif isinstance(dff_data, dict):
+            # Dictionary format - combine selected channels
+            valid_channels = []
+            for channel in selected_channels:
+                if str(channel) in dff_data:
+                    valid_channels.append(str(channel))
+            
+            if not valid_channels:
+                log_message("No valid channels found in dFF data", "ERROR")
+                return
+            
+            if len(valid_channels) == 1:
+                combined_dff_data = dff_data[valid_channels[0]].values if isinstance(dff_data[valid_channels[0]], pd.Series) else dff_data[valid_channels[0]]
+            else:
+                # Average multiple channels
+                channel_arrays = []
+                for ch in valid_channels:
+                    ch_data = dff_data[ch].values if isinstance(dff_data[ch], pd.Series) else dff_data[ch]
+                    channel_arrays.append(ch_data)
+                combined_dff_data = np.mean(channel_arrays, axis=0)
+            
+            channel_label = "+".join(valid_channels)
         else:
-            log_message("Unsupported dFF data format", "ERROR")
+            log_message(f"Unsupported dFF data format: {type(dff_data)}", "ERROR")
+            return
+        
+        if combined_dff_data is None:
+            log_message("Failed to extract dFF data", "ERROR")
             return
         
         if len(general_onsets) == 0:
@@ -292,23 +327,23 @@ class MultimodalAnalysis:
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
-        # # Control panel
-        # control_frame = tk.Frame(main_container, bg='#f8f8f8')
-        # control_frame.pack(fill=tk.X, pady=10)
+        # Control panel
+        control_frame = tk.Frame(main_container, bg='#f8f8f8')
+        control_frame.pack(fill=tk.X, pady=15)
         
-        # # Save button
-        # save_btn = tk.Button(control_frame, text="💾 Save Figure", 
-        #                    command=lambda: self._save_figure(fig),
-        #                    bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
-        #                    relief=tk.FLAT, padx=20, pady=8)
-        # save_btn.pack(side=tk.RIGHT, padx=10)
+        # Save button
+        save_btn = tk.Button(control_frame, text="💾 Save Figure", 
+                           command=lambda: self._save_figure(fig),
+                           bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
+                           relief=tk.FLAT, padx=20, pady=8)
+        save_btn.pack(side=tk.RIGHT, padx=10)
         
-        # # Close button
-        # close_btn = tk.Button(control_frame, text="❌ Close", 
-        #                     command=result_window.destroy,
-        #                     bg="#e74c3c", fg="white", font=("Microsoft YaHei", 10),
-        #                     relief=tk.FLAT, padx=20, pady=8)
-        # close_btn.pack(side=tk.RIGHT, padx=10)
+        # Close button
+        close_btn = tk.Button(control_frame, text="❌ Close", 
+                            command=result_window.destroy,
+                            bg="#e74c3c", fg="white", font=("Microsoft YaHei", 10),
+                            relief=tk.FLAT, padx=20, pady=8)
+        close_btn.pack(side=tk.RIGHT, padx=10)
         
         log_message(f"GENERAL ONSETS analysis completed: {len(general_onsets)} events, "
                    f"channels {channel_label}, time window [-{pre_time},{post_time}]s")
@@ -469,7 +504,7 @@ class MultimodalAnalysis:
         ax = fig.add_subplot(111)
         
         # Set graph properties - UI style
-        ax.set_title("📍 Continuous Locomotion Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
+        ax.set_title("🔍 Continuous Locomotion Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
         ax.set_xlabel("X Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.set_ylabel("Y Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.grid(True, alpha=0.3, linestyle='--', color='#bdc3c7')
@@ -573,7 +608,7 @@ class MultimodalAnalysis:
         close_btn.pack(side=tk.RIGHT, padx=10)
         
         log_message(f"Continuous locomotion trajectory analysis completed: {len(locomotion_periods)} periods, {len(selected_bodyparts)} bodyparts")
-    
+
     def _save_figure(self, fig):
         """Save figure to file"""
         filename = filedialog.asksaveasfilename(
@@ -666,7 +701,6 @@ class AcrossdayAnalysis:
         
         # Initialize table
         self.initialize_table()
-
         self.update_scroll_region()
         
     def update_scroll_region(self):
@@ -968,6 +1002,8 @@ class AcrossdayAnalysis:
                 results[day_name] = day_result
         
         if results:
+            # **FIX 2: Store results before using them**
+            self.results = results
             self.plot_results(results)
             log_message("Acrossday analysis completed successfully")
         else:
@@ -1003,12 +1039,14 @@ class AcrossdayAnalysis:
                 preprocessed_data = animal_data['preprocessed_data']
                 channels = animal_data.get('channels', {})
                 time_col = channels['time']
-                fiber_timestamps = preprocessed_data[time_col]
+                fiber_timestamps = preprocessed_data[time_col].values
                 
-                # Get dff data
+                # **FIX 3: Properly handle dff_data format**
                 dff_data = animal_data['dff_data']
+                combined_dff_data = None
+                
                 if isinstance(dff_data, pd.Series):
-                    combined_dff_data = dff_data
+                    combined_dff_data = dff_data.values
                 elif isinstance(dff_data, pd.DataFrame):
                     active_channels = animal_data.get('active_channels', [])
                     valid_columns = []
@@ -1017,10 +1055,37 @@ class AcrossdayAnalysis:
                         if col_name in dff_data.columns:
                             valid_columns.append(col_name)
                     if valid_columns:
-                        combined_dff_data = dff_data[valid_columns].mean(axis=1) if len(valid_columns) > 1 else dff_data[valid_columns[0]]
+                        combined_dff_data = dff_data[valid_columns].mean(axis=1).values if len(valid_columns) > 1 else dff_data[valid_columns[0]].values
                     else:
+                        log_message(f"No valid dFF columns for {animal_data.get('animal_id')}", "WARNING")
                         continue
+                elif isinstance(dff_data, dict):
+                    active_channels = animal_data.get('active_channels', [])
+                    valid_channels = []
+                    for channel in active_channels:
+                        if str(channel) in dff_data:
+                            valid_channels.append(str(channel))
+                    
+                    if not valid_channels:
+                        log_message(f"No valid channels in dFF data for {animal_data.get('animal_id')}", "WARNING")
+                        continue
+                    
+                    if len(valid_channels) == 1:
+                        ch_data = dff_data[valid_channels[0]]
+                        combined_dff_data = ch_data.values if isinstance(ch_data, pd.Series) else ch_data
+                    else:
+                        channel_arrays = []
+                        for ch in valid_channels:
+                            ch_data = dff_data[ch]
+                            ch_array = ch_data.values if isinstance(ch_data, pd.Series) else ch_data
+                            channel_arrays.append(ch_array)
+                        combined_dff_data = np.mean(channel_arrays, axis=0)
                 else:
+                    log_message(f"Unsupported dFF format for {animal_data.get('animal_id')}", "WARNING")
+                    continue
+                
+                if combined_dff_data is None:
+                    log_message(f"Failed to extract dFF data for {animal_data.get('animal_id')}", "WARNING")
                     continue
                 
                 # Calculate episodes (using fixed time window: -30s to +60s)
@@ -1143,8 +1208,6 @@ class AcrossdayAnalysis:
         ax2.set_xlabel('Time (s)')
         ax2.set_ylabel('Z-score')
         ax2.set_title('Fiber Z-score - All Days')
-        ax2.legend()
-        ax2.grid(False)
         
         # 3. All days running heatmap (bottom left)
         ax3 = fig.add_subplot(223)

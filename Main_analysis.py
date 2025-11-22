@@ -3255,12 +3255,92 @@ def create_running_visualization(animal_data=None):
     running_plot_window = RunningVisualizationWindow(central_display_frame, animal_data)
 
 def on_animal_select(event):
+    """Handle animal selection from list - Modified for batch analysis"""
     global current_animal_index
     selection = file_listbox.curselection()
     if selection:
         current_animal_index = selection[0]
         if current_animal_index < len(multi_animal_data):
-            main_visualization(multi_animal_data[current_animal_index])
+            animal_data = multi_animal_data[current_animal_index]
+            
+            # Update main visualization
+            main_visualization(animal_data)
+            
+            # Check if there's a last analysis and if current animal has results
+            last_analysis = analysis_manager.get_last_analysis()
+            if last_analysis:
+                log_message(f"Switching to {animal_data['animal_id']}", "INFO")
+                display_analysis_results(last_analysis, animal_data)
+            else:
+                log_message(f"Viewing {animal_data['animal_id']}", "INFO")
+
+def display_analysis_results(analysis_type, animal_data):
+    """Display analysis results for current animal"""
+    if analysis_type == 'running_analysis':
+        display_running_analysis_for_animal(animal_data)
+    elif analysis_type == 'fiber_preprocessing':
+        display_fiber_results_for_animal(animal_data)
+    elif analysis_type == 'general_onsets':
+        display_multimodal_results_for_animal(animal_data, 'general_onsets')
+    elif analysis_type == 'locomotion_trajectory':
+        display_multimodal_results_for_animal(animal_data, 'locomotion_trajectory')
+
+def display_running_analysis_for_animal(animal_data):
+    """Display running analysis results for specific animal"""
+    if 'last_running_analysis_type' not in animal_data:
+        return
+    
+    analysis_type = animal_data['last_running_analysis_type']
+    treadmill_behaviors = animal_data.get('treadmill_behaviors')
+    
+    if not treadmill_behaviors or analysis_type not in treadmill_behaviors:
+        return
+    
+    # Update running plot window
+    if running_plot_window:
+        running_plot_window.current_analysis_type = analysis_type
+        running_plot_window.analysis_data = treadmill_behaviors[analysis_type]
+        running_plot_window.update_plot()
+    
+    # Update fiber plot window if exists
+    if fiber_plot_window:
+        fiber_plot_window.update_running_analysis(
+            analysis_type, 
+            treadmill_behaviors[analysis_type]
+        )
+
+def display_fiber_results_for_animal(animal_data):
+    """Display fiber preprocessing results for specific animal"""
+    if fiber_plot_window:
+        fiber_plot_window.animal_data = animal_data
+        
+        # Determine which plot type to show based on available data
+        if 'zscore_data' in animal_data and animal_data['zscore_data']:
+            fiber_plot_window.set_plot_type("zscore")
+        elif 'dff_data' in animal_data and animal_data['dff_data']:
+            fiber_plot_window.set_plot_type("dff")
+        elif 'preprocessed_data' in animal_data:
+            fiber_plot_window.set_plot_type("motion_corrected")
+        else:
+            fiber_plot_window.set_plot_type("raw")
+
+def display_multimodal_results_for_animal(animal_data, analysis_type):
+    """Display multimodal analysis results for specific animal"""
+    if analysis_type == 'general_onsets':
+        if 'general_onsets_analysis' in animal_data:
+            # Create temporary multimodal analyzer to display results
+            temp_analyzer = MultimodalAnalysis(root, multi_animal_data, current_animal_index, selected_bodyparts)
+            temp_analyzer._display_general_onsets_results(animal_data)
+        else:
+            log_message(f"No general onsets analysis results for this animal", "INFO")
+    
+    elif analysis_type == 'locomotion_trajectory':
+        if 'locomotion_trajectory_analysis' in animal_data:
+            # Display locomotion trajectory results
+            temp_analyzer = MultimodalAnalysis(root, multi_animal_data, current_animal_index, selected_bodyparts)
+            temp_analyzer._display_locomotion_results(animal_data)
+        else:
+            log_message(f"No locomotion trajectory analysis results for this animal", "INFO")
 
 def create_animal_list():
     for widget in right_frame.winfo_children():
@@ -3314,28 +3394,32 @@ def create_animal_list():
                             style="Accent.TButton")
     clear_all_btn.pack(fill="x", padx=2, pady=(1, 2))
 
-
 def clear_selected():
+    """Clear selected animals"""
     selected_indices = file_listbox.curselection()
     for index in sorted(selected_indices, reverse=True):
-        animal_id = file_listbox.get(index)
         file_listbox.delete(index)
         
-        # Remove from selected_files and multi_animal_data
         if index < len(selected_files):
             animal_data = selected_files.pop(index)
-            # Find and remove from multi_animal_data
             for i, data in enumerate(multi_animal_data):
                 if data['animal_id'] == animal_data['animal_id']:
                     multi_animal_data.pop(i)
                     break
+    
+    # Reset if no animals left
+    if not multi_animal_data:
+        analysis_manager.last_analysis_type = None
 
 def clear_all():
+    """Clear all animals"""
     file_listbox.delete(0, tk.END)
-    global selected_files
+    global selected_files, multi_animal_data
     selected_files = []
-    global multi_animal_data
     multi_animal_data = []
+    
+    # Reset analysis manager
+    analysis_manager.last_analysis_type = None
 
 def fiber_preprocessing():
     global preprocess_frame
@@ -3423,7 +3507,6 @@ def fiber_preprocessing():
               command=lambda: apply_preprocessing_wrapper()).pack(side=tk.LEFT, padx=5)
     ttk.Button(button_frame, text="Close", 
               command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
-    
 
 def update_baseline_ui(*args):
     global baseline_frame, smooth_frame, baseline_corr_frame, motion_frame, button_frame
@@ -3470,13 +3553,454 @@ def toggle_widgets(parent_frame, show, index):
             else:
                 children[index].grid_remove()
 
-def apply_preprocessing_wrapper():
-    try:
-        if multi_animal_data:
-            animal_data = multi_animal_data[current_animal_index]
+def running_data_preprocess():
+    """Running data preprocessing dialog - Batch mode for all animals"""
+    global multi_animal_data, current_animal_index, running_channel, invert_running, threadmill_diameter
+    
+    # Check if any animal data is available
+    if not multi_animal_data:
+        log_message("No animal data available for preprocessing", "WARNING")
+        return
+    
+    # Count animals with AST2 data
+    animals_with_ast2 = [a for a in multi_animal_data if 'ast2_data_adjusted' in a or 'ast2_data' in a]
+    if not animals_with_ast2:
+        log_message("No animals with running data available", "WARNING")
+        return
+    
+    # Use current animal for preview if available, otherwise use first animal with data
+    preview_animal = None
+    if current_animal_index < len(multi_animal_data):
+        preview_animal = multi_animal_data[current_animal_index]
+        if 'ast2_data_adjusted' not in preview_animal and 'ast2_data' not in preview_animal:
+            preview_animal = animals_with_ast2[0]
+    else:
+        preview_animal = animals_with_ast2[0]
+    
+    ast2_data = preview_animal.get('ast2_data_adjusted') or preview_animal.get('ast2_data')
+    
+    if ast2_data is None:
+        log_message("No running data available for preview", "WARNING")
+        return
+    
+    # Create preprocessing dialog
+    prep_window = tk.Toplevel(root)
+    prep_window.title("Running Data Preprocessing Settings - Batch Mode")
+    prep_window.geometry("500x850")
+    prep_window.transient(root)
+    prep_window.grab_set()
+    
+    # Main frame with scrollbar for adaptive height
+    main_frame = ttk.Frame(prep_window, padding=15)
+    main_frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Title
+    title_label = ttk.Label(main_frame, text="🏃 Running Data Preprocessing\n(All Animals)", 
+                           font=("Arial", 14, "bold"))
+    title_label.pack(pady=(0, 15))
+    
+    # Animal count info
+    info_text = f"Will apply to {len(animals_with_ast2)} animals with running data\nPreview using: {preview_animal.get('animal_id', 'Animal')}"
+    info_label = ttk.Label(main_frame, text=info_text, 
+                          font=("Arial", 9), foreground="gray")
+    info_label.pack(pady=(0, 10))
+    
+    # Basic Settings Frame
+    basic_frame = ttk.LabelFrame(main_frame, text="📊 Basic Settings", padding=10)
+    basic_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    # Running Channel Selection
+    channel_frame = ttk.Frame(basic_frame)
+    channel_frame.pack(fill=tk.X, pady=5)
+    
+    ttk.Label(channel_frame, text="Running Channel:").pack(side=tk.LEFT)
+    
+    # Get available channels from AST2 header
+    available_channels = []
+    if 'ast2_data' in preview_animal and preview_animal['ast2_data']:
+        header = preview_animal['ast2_data']['header']
+        if 'activeChIDs' in header:
+            available_channels = header['activeChIDs']
         else:
-            animal_data = None
+            # Fallback: try to determine from data shape
+            if 'files' in preview_animal and 'ast2' in preview_animal['files']:
+                try:
+                    header, raw_data = h_AST2_readData(preview_animal['files']['ast2'])
+                    available_channels = list(range(len(raw_data)))
+                except:
+                    available_channels = [0, 1, 2, 3]  # Default fallback
+    
+    if not available_channels:
+        available_channels = [0, 1, 2, 3]  # Default fallback
+    
+    channel_var = tk.StringVar(value=str(running_channel))
+    channel_combo = ttk.Combobox(channel_frame, textvariable=channel_var, 
+                                values=available_channels, state="readonly", width=10)
+    channel_combo.pack(side=tk.RIGHT, padx=(10, 0))
+    
+    # Invert Running Checkbox
+    invert_var = tk.BooleanVar(value=invert_running)
+    invert_check = ttk.Checkbutton(basic_frame, text="Invert Running Values", 
+                                  variable=invert_var)
+    invert_check.pack(anchor="w", pady=5)
+    
+    # Threadmill Diameter
+    diameter_frame = ttk.Frame(basic_frame)
+    diameter_frame.pack(fill=tk.X, pady=5)
+    
+    ttk.Label(diameter_frame, text="Threadmill Diameter (cm):").pack(side=tk.LEFT)
+    
+    diameter_var = tk.StringVar(value=str(threadmill_diameter))
+    diameter_entry = ttk.Entry(diameter_frame, textvariable=diameter_var, width=10)
+    diameter_entry.pack(side=tk.RIGHT, padx=(10, 0))
+    
+    # Filter Configuration Frame
+    filter_frame = ttk.LabelFrame(main_frame, text="🔧 Filter Configuration", padding=10)
+    filter_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    # Smoothing Method Selection
+    smooth_methods = [
+        {"name": "No Smoothing", "type": "none", "params": []},
+        {"name": "Moving Average", "type": "moving_average", 
+         "params": [
+             {"name": "window_size", "type": "int", "default": 20, "min": 3, "max": 51, "step": 2}
+         ]},
+        {"name": "Median Filter", "type": "median",
+         "params": [
+             {"name": "window_size", "type": "int", "default": 100, "min": 3, "max": 51, "step": 2}
+         ]},
+        {"name": "Savitzky-Golay", "type": "savitzky_golay",
+         "params": [
+             {"name": "window_size", "type": "int", "default": 100, "min": 5, "max": 51, "step": 2},
+             {"name": "poly_order", "type": "int", "default": 3, "min": 1, "max": 5}
+         ]},
+        {"name": "Butterworth Low-pass", "type": "butterworth",
+         "params": [
+             {"name": "sampling_rate", "type": "float", "default": 10.0, "min": 1.0, "max": 100.0},
+             {"name": "cutoff_freq", "type": "float", "default": 2.0, "min": 0.1, "max": 10.0},
+             {"name": "filter_order", "type": "int", "default": 2, "min": 1, "max": 5}
+         ]}
+    ]
+    
+    # Method selection
+    method_frame = ttk.Frame(filter_frame)
+    method_frame.pack(fill=tk.X, pady=(0, 10))
+    
+    ttk.Label(method_frame, text="Smoothing Method:").pack(side=tk.LEFT)
+    
+    method_names = [method["name"] for method in smooth_methods]
+    method_var = tk.StringVar(value=method_names[0])
+    method_combo = ttk.Combobox(method_frame, textvariable=method_var, 
+                               values=method_names, state="readonly", width=20)
+    method_combo.pack(side=tk.RIGHT, padx=(10, 0))
+    
+    # Parameters frame (will be populated dynamically)
+    params_frame = ttk.Frame(filter_frame)
+    params_frame.pack(fill=tk.X, pady=5)
+    
+    # Store parameter variables
+    param_vars = {}
+    
+    def update_parameters(*args):
+        """Update parameter inputs based on selected method"""
+        # Clear previous parameters
+        for widget in params_frame.winfo_children():
+            widget.destroy()
         
+        param_vars.clear()
+        
+        # Find selected method
+        selected_method_name = method_var.get()
+        selected_method = None
+        for method in smooth_methods:
+            if method["name"] == selected_method_name:
+                selected_method = method
+                break
+        
+        if not selected_method or not selected_method["params"]:
+            # No parameters needed
+            ttk.Label(params_frame, text="No parameters needed for this method", 
+                     foreground="gray").pack(pady=10)
+            return
+        
+        # Create parameter inputs
+        ttk.Label(params_frame, text="Parameters:", font=("Arial", 9, "bold")).pack(anchor="w", pady=(0, 5))
+        
+        for param in selected_method["params"]:
+            param_frame = ttk.Frame(params_frame)
+            param_frame.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(param_frame, text=f"{param['name'].replace('_', ' ').title()}:").pack(side=tk.LEFT)
+            
+            if param['type'] == 'int':
+                var = tk.IntVar(value=param['default'])
+                widget = ttk.Spinbox(param_frame, from_=param['min'], to=param['max'], 
+                                   textvariable=var, width=8)
+            else:  # float
+                var = tk.DoubleVar(value=param['default'])
+                widget = ttk.Spinbox(param_frame, from_=param['min'], to=param['max'], 
+                                   increment=0.1, textvariable=var, width=8)
+            
+            widget.pack(side=tk.RIGHT, padx=(10, 0))
+            param_vars[param['name']] = var
+    
+    # Initial parameter setup
+    method_var.trace('w', update_parameters)
+    update_parameters()
+    
+    # Preview Frame
+    preview_frame = ttk.LabelFrame(main_frame, text="👁️ Preview", padding=10)
+    preview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+    
+    # Create matplotlib figure for preview
+    fig = Figure(figsize=(8, 3), dpi=80)
+    ax = fig.add_subplot(111)
+    canvas = FigureCanvasTkAgg(fig, preview_frame)
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def update_preview():
+        """Update the preview plot with current settings"""
+        ax.clear()
+        
+        # Get current filter settings
+        selected_method_name = method_var.get()
+        selected_method = None
+        for method in smooth_methods:
+            if method["name"] == selected_method_name:
+                selected_method = method
+                break
+        
+        filter_settings = []
+        if selected_method and selected_method["type"] != "none":
+            params = {}
+            for param_name, var in param_vars.items():
+                params[param_name] = var.get()
+            
+            filter_settings.append({
+                'type': selected_method['type'],
+                'params': params
+            })
+        
+        # Apply preprocessing
+        processed_data = preprocess_running_data(ast2_data, filter_settings)
+        
+        if processed_data:
+            timestamps = processed_data['timestamps']
+            original_speed = processed_data['original_speed']
+            filtered_speed = processed_data['filtered_speed']
+            
+            invert_preview = invert_var.get()
+            if invert_preview:
+                original_speed = -original_speed
+                filtered_speed = -filtered_speed
+            
+            # Plot original and filtered data
+            ax.plot(timestamps, original_speed, 'b-', alpha=0.7, label='Original', linewidth=1)
+            ax.plot(timestamps, filtered_speed, 'r-', label='Filtered', linewidth=1.5)
+            
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Speed (cm/s)')
+            ax.set_title('Running Speed: Original vs Filtered')
+            ax.legend()
+            ax.grid(False)
+            
+            canvas.draw()
+    
+    def apply_all_settings():
+        """Apply all settings (channel, invert, diameter, and filters) to ALL animals"""
+        global running_channel, invert_running, threadmill_diameter
+        
+        try:
+            # Apply basic settings
+            new_channel = int(channel_var.get())
+            if new_channel < 0:
+                raise ValueError("Channel must be non-negative")
+            running_channel = new_channel
+            
+            invert_running = invert_var.get()
+            
+            new_diameter = float(diameter_var.get())
+            if new_diameter <= 0:
+                raise ValueError("Diameter must be positive")
+            threadmill_diameter = new_diameter
+            
+            # Get filter settings
+            selected_method_name = method_var.get()
+            selected_method = None
+            for method in smooth_methods:
+                if method["name"] == selected_method_name:
+                    selected_method = method
+                    break
+            
+            filter_settings = []
+            if selected_method and selected_method["type"] != "none":
+                params = {}
+                for param_name, var in param_vars.items():
+                    params[param_name] = var.get()
+                
+                filter_settings.append({
+                    'type': selected_method['type'],
+                    'params': params
+                })
+            
+            # Apply to ALL animals
+            successful = 0
+            failed = 0
+            
+            for idx, animal_data in enumerate(multi_animal_data):
+                animal_id = animal_data.get('animal_id', f'Animal {idx}')
+                
+                try:
+                    # Check if animal has AST2 file
+                    if 'files' not in animal_data or 'ast2' not in animal_data['files']:
+                        log_message(f"Skipping {animal_id}: No AST2 file", "WARNING")
+                        failed += 1
+                        continue
+                    
+                    # Update AST2 data with new settings
+                    header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                    if running_channel < len(raw_data):
+                        speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
+                        ast2_data_updated = {
+                            'header': header,
+                            'data': speed
+                        }
+                        animal_data['ast2_data'] = ast2_data_updated
+                        
+                        # Re-align data
+                        alignment_success = align_data(animal_data)
+                        if not alignment_success:
+                            log_message(f"Warning: Alignment failed for {animal_id}", "WARNING")
+                        
+                        # Apply preprocessing filters
+                        if animal_data.get('ast2_data_adjusted'):
+                            processed_data = preprocess_running_data(
+                                animal_data['ast2_data_adjusted'], 
+                                filter_settings
+                            )
+                            
+                            if processed_data:
+                                animal_data['running_processed_data'] = processed_data
+                                successful += 1
+                                log_message(f"✓ Processed {animal_id}", "INFO")
+                            else:
+                                failed += 1
+                                log_message(f"✗ Failed to process {animal_id}", "ERROR")
+                        else:
+                            failed += 1
+                            log_message(f"✗ No adjusted AST2 data for {animal_id}", "ERROR")
+                    else:
+                        log_message(f"✗ Invalid channel {running_channel} for {animal_id}, max: {len(raw_data)-1}", "ERROR")
+                        failed += 1
+                        
+                except Exception as e:
+                    log_message(f"✗ Error processing {animal_id}: {str(e)}", "ERROR")
+                    failed += 1
+            
+            # Update visualization for current animal
+            if current_animal_index < len(multi_animal_data):
+                if running_plot_window:
+                    running_plot_window.animal_data = multi_animal_data[current_animal_index]
+                    running_plot_window.update_plot()
+            
+            # Show summary
+            log_message(f"Running preprocessing completed: Channel {running_channel}, "
+                       f"Diameter {threadmill_diameter}cm, Invert {invert_running}, "
+                       f"Filter: {selected_method_name}", "INFO")
+            log_message(f"Results: {successful} successful, {failed} failed", "INFO")
+            
+            prep_window.destroy()
+            
+        except ValueError as e:
+            log_message(f"Invalid setting value: {str(e)}", "ERROR")
+        except Exception as e:
+            log_message(f"Error applying running settings: {str(e)}", "ERROR")
+    
+    # Button Frame
+    button_frame = ttk.Frame(main_frame)
+    button_frame.pack(fill=tk.X, pady=10)
+    
+    ttk.Button(button_frame, text="🔄 Update Preview", 
+              command=update_preview).pack(side=tk.LEFT, padx=5)
+    
+    ttk.Button(button_frame, text="✅ Apply to All Animals", 
+              command=apply_all_settings).pack(side=tk.LEFT, padx=5)
+    
+    ttk.Button(button_frame, text="✖ Cancel", 
+              command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
+    
+    # Initial preview
+    update_preview()
+
+def running_data_analysis_wrapper(analysis_type):
+    """Analyze running data for ALL animals"""
+    try:
+        if not multi_animal_data:
+            log_message("No animal data available for analysis", "WARNING")
+            return
+        
+        # Analyze all animals
+        successful_analyses = 0
+        failed_analyses = 0
+        
+        for idx, animal_data in enumerate(multi_animal_data):
+            animal_id = animal_data.get('animal_id', f'Animal {idx}')
+            
+            try:
+                ast2_data = animal_data.get('ast2_data_adjusted')
+                processed_data = animal_data.get('running_processed_data')
+                
+                if ast2_data is None:
+                    log_message(f"Skipping {animal_id}: No running data", "WARNING")
+                    failed_analyses += 1
+                    continue
+                
+                # Use filtered data if available
+                if processed_data:
+                    processed_ast2_data = {
+                        'header': ast2_data['header'] if ast2_data else {},
+                        'data': {
+                            'timestamps': processed_data['timestamps'],
+                            'speed': processed_data['filtered_speed']
+                        }
+                    }
+                    treadmill_behaviors = classify_treadmill_behavior(processed_ast2_data)
+                else:
+                    treadmill_behaviors = classify_treadmill_behavior(ast2_data)
+                
+                # Store results in animal_data
+                animal_data['treadmill_behaviors'] = treadmill_behaviors
+                animal_data['last_running_analysis_type'] = analysis_type
+                
+                successful_analyses += 1
+                log_message(f"✓ Analyzed {animal_id}: {analysis_type}", "INFO")
+                
+            except Exception as e:
+                log_message(f"✗ Failed to analyze {animal_id}: {str(e)}", "ERROR")
+                failed_analyses += 1
+        
+        # Set this as the last analysis
+        analysis_manager.set_last_analysis('running_analysis')
+        
+        # Display results for current animal
+        if current_animal_index < len(multi_animal_data):
+            display_running_analysis_for_animal(multi_animal_data[current_animal_index])
+        
+        # Show summary
+        log_message(f"Running {analysis_type} analysis completed: "
+                   f"{successful_analyses} successful, {failed_analyses} failed", "INFO")
+        
+    except Exception as e:
+        log_message(f"Batch running analysis failed: {str(e)}", "ERROR")
+
+def apply_preprocessing_wrapper():
+    """Apply fiber preprocessing to ALL animals"""
+    try:
+        if not multi_animal_data:
+            log_message("No animal data available for preprocessing", "WARNING")
+            return
+        
+        # Get parameters from UI
         target_signal = str(target_signal_var.get())
         reference_signal = str(reference_signal_var.get())
         baseline_start_val = float(baseline_start.get())
@@ -3488,49 +4012,62 @@ def apply_preprocessing_wrapper():
         baseline_model_val = str(baseline_model.get())
         apply_motion_val = bool(apply_motion.get())
         
-        success = apply_preprocessing(
-            animal_data, 
-            target_signal,
-            reference_signal,
-            (baseline_start_val, baseline_end_val),
-            apply_smooth_val,
-            window_size_val,
-            poly_order_val,
-            apply_baseline_val,
-            baseline_model_val,
-            apply_motion_val
-        )
+        successful_preprocessing = 0
+        failed_preprocessing = 0
         
-        if not success:
-            log_message("Preprocessing failed", "ERROR")
-            return
+        for idx, animal_data in enumerate(multi_animal_data):
+            animal_id = animal_data.get('animal_id', f'Animal {idx}')
+            
+            try:
+                if 'fiber_data_trimmed' not in animal_data:
+                    log_message(f"Skipping {animal_id}: No fiber data", "WARNING")
+                    failed_preprocessing += 1
+                    continue
+                
+                success = apply_preprocessing(
+                    animal_data, 
+                    target_signal,
+                    reference_signal,
+                    (baseline_start_val, baseline_end_val),
+                    apply_smooth_val,
+                    window_size_val,
+                    poly_order_val,
+                    apply_baseline_val,
+                    baseline_model_val,
+                    apply_motion_val
+                )
+                
+                if success:
+                    successful_preprocessing += 1
+                    log_message(f"✓ Preprocessed {animal_id}", "INFO")
+                else:
+                    failed_preprocessing += 1
+                    log_message(f"✗ Failed to preprocess {animal_id}", "ERROR")
+                    
+            except Exception as e:
+                log_message(f"✗ Error preprocessing {animal_id}: {str(e)}", "ERROR")
+                failed_preprocessing += 1
         
-        if fiber_plot_window:
-            fiber_plot_window.animal_data = animal_data if animal_data else {
-                'preprocessed_data': globals().get('preprocessed_data'),
-                'channels': globals().get('channels'),
-                'active_channels': globals().get('active_channels'),
-                'channel_data': globals().get('channel_data')
-            }
-            fiber_plot_window.set_plot_type("preprocessed")
+        # Set last analysis type
+        analysis_manager.set_last_analysis('fiber_preprocessing')
         
-        log_message("Preprocessing applied successfully")
+        # Update display for current animal
+        if current_animal_index < len(multi_animal_data):
+            display_fiber_results_for_animal(multi_animal_data[current_animal_index])
+        
+        # Show summary
+        log_message(f"Fiber preprocessing completed: "
+                   f"{successful_preprocessing} successful, {failed_preprocessing} failed", "INFO")
         
     except Exception as e:
-        log_message(f"Preprocessing failed: {str(e)}", "ERROR")
+        log_message(f"Batch fiber preprocessing failed: {str(e)}", "ERROR")
 
 def calculate_and_plot_dff_wrapper():
+    """Calculate ΔF/F for ALL animals"""
     try:
-        if multi_animal_data:
-            animal_data = multi_animal_data[current_animal_index]
-            if 'preprocessed_data' not in animal_data or animal_data['preprocessed_data'] is None:
-                log_message("Please apply preprocessing first", "WARNING")
-                return
-        else:
-            animal_data = None
-            if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please apply preprocessing first", "WARNING")
-                return
+        if not multi_animal_data:
+            log_message("No animal data available", "WARNING")
+            return
         
         target_signal = str(target_signal_var.get())
         reference_signal = str(reference_signal_var.get())
@@ -3538,115 +4075,131 @@ def calculate_and_plot_dff_wrapper():
         baseline_end_val = float(baseline_end.get())
         apply_baseline_val = bool(apply_baseline.get())
         
-        calculate_and_plot_dff(
-            animal_data, 
-            target_signal,
-            reference_signal,
-            (baseline_start_val, baseline_end_val),
-            apply_baseline_val
-        )
+        successful_calculations = 0
+        failed_calculations = 0
         
-        if multi_animal_data:
-            dff_col = f"CH{multi_animal_data[current_animal_index]['active_channels'][0]}_dff" if multi_animal_data[current_animal_index]['active_channels'] else None
-            if dff_col and dff_col in multi_animal_data[current_animal_index]['preprocessed_data'].columns:
-                multi_animal_data[current_animal_index]['dff_data'] = multi_animal_data[current_animal_index]['preprocessed_data'][dff_col]
-        else:
-            if hasattr(globals(), 'active_channels') and globals().get('active_channels'):
-                dff_col = f"CH{globals().get('active_channels')[0]}_dff"
-                if dff_col in globals().get('preprocessed_data', {}).columns:
-                    globals()['dff_data'] = globals()['preprocessed_data'][dff_col]
+        for idx, animal_data in enumerate(multi_animal_data):
+            animal_id = animal_data.get('animal_id', f'Animal {idx}')
+            
+            try:
+                if 'preprocessed_data' not in animal_data or animal_data['preprocessed_data'] is None:
+                    log_message(f"Skipping {animal_id}: No preprocessed data", "WARNING")
+                    failed_calculations += 1
+                    continue
+                
+                calculate_and_plot_dff(
+                    animal_data, 
+                    target_signal,
+                    reference_signal,
+                    (baseline_start_val, baseline_end_val),
+                    apply_baseline_val
+                )
+                
+                successful_calculations += 1
+                log_message(f"✓ Calculated ΔF/F for {animal_id}", "INFO")
+                
+            except Exception as e:
+                log_message(f"✗ Failed ΔF/F for {animal_id}: {str(e)}", "ERROR")
+                failed_calculations += 1
         
-        if fiber_plot_window:
-            fiber_plot_window.set_plot_type("dff")
+        analysis_manager.set_last_analysis('dff')
         
-        log_message("ΔF/F calculated successfully")
+        # Update display for current animal
+        if current_animal_index < len(multi_animal_data):
+            if fiber_plot_window:
+                fiber_plot_window.set_plot_type("dff")
+        
+        log_message(f"ΔF/F calculation completed: "
+                   f"{successful_calculations} successful, {failed_calculations} failed", "INFO")
+        
     except Exception as e:
-        log_message(f"ΔF/F calculation failed: {str(e)}", "ERROR")
+        log_message(f"Batch ΔF/F calculation failed: {str(e)}", "ERROR")
 
 def calculate_and_plot_zscore_wrapper():
+    """Calculate Z-score for ALL animals"""
     try:
-        if multi_animal_data:
-            animal_data = multi_animal_data[current_animal_index]
-        else:
-            animal_data = None
-        
-        zscore_data = calculate_and_plot_zscore(animal_data, 
-                                 target_signal_var.get(),
-                                 reference_signal_var.get(),
-                                 (baseline_start.get(), baseline_end.get()),
-                                 apply_baseline.get())
-        
-        if multi_animal_data:
-            multi_animal_data[current_animal_index]['zscore_data'] = zscore_data
-        else:
-            globals()['zscore_data'] = zscore_data
-        
-        if fiber_plot_window:
-            fiber_plot_window.set_plot_type("zscore")
-        
-        log_message("Z-score calculated successfully")
-    except Exception as e:
-        log_message(f"Z-score calculation failed: {str(e)}", "ERROR")
-
-def running_data_analysis_wrapper(analysis_type):
-    """Wrapper function for different types of running data analysis"""
-    try:
-        if multi_animal_data:
-            animal_data = multi_animal_data[current_animal_index]
-            ast2_data = animal_data.get('ast2_data_adjusted')
-            processed_data = animal_data.get('running_processed_data')
-        else:
-            ast2_data = globals().get('ast2_data_adjusted')
-            processed_data = globals().get('running_processed_data')
-        
-        if ast2_data is None:
-            log_message("No running data available for analysis", "WARNING")
+        if not multi_animal_data:
+            log_message("No animal data available", "WARNING")
             return
         
-        # Use filtered data if available, otherwise use original
-        if processed_data:
-            processed_ast2_data = {
-                'header': ast2_data['header'] if ast2_data else {},
-                'data': {
-                    'timestamps': processed_data['timestamps'],
-                    'speed': processed_data['filtered_speed']
-                }
-            }
-            log_message(f"Using filtered running data for {analysis_type} analysis", "INFO")
-            treadmill_behaviors = classify_treadmill_behavior(processed_ast2_data)
-        else:
-            log_message(f"Using original running data for {analysis_type} analysis", "INFO")
-            treadmill_behaviors = classify_treadmill_behavior(ast2_data)
+        successful_calculations = 0
+        failed_calculations = 0
         
-        # Store the full analysis results
-        if multi_animal_data:
-            multi_animal_data[current_animal_index]['treadmill_behaviors'] = treadmill_behaviors
-        else:
-            globals()['treadmill_behaviors'] = treadmill_behaviors
+        for idx, animal_data in enumerate(multi_animal_data):
+            animal_id = animal_data.get('animal_id', f'Animal {idx}')
+            
+            try:
+                zscore_data = calculate_and_plot_zscore(
+                    animal_data,
+                    target_signal_var.get(),
+                    reference_signal_var.get(),
+                    (baseline_start.get(), baseline_end.get()),
+                    apply_baseline.get()
+                )
+                
+                if zscore_data:
+                    animal_data['zscore_data'] = zscore_data
+                    successful_calculations += 1
+                    log_message(f"✓ Calculated Z-score for {animal_id}", "INFO")
+                else:
+                    failed_calculations += 1
+                    
+            except Exception as e:
+                log_message(f"✗ Failed Z-score for {animal_id}: {str(e)}", "ERROR")
+                failed_calculations += 1
         
-        # Get the specific analysis data based on type
-        if analysis_type in treadmill_behaviors:
-            analysis_data = treadmill_behaviors[analysis_type]
-        else:
-            log_message(f"Analysis type '{analysis_type}' not found in results", "ERROR")
-            return
+        analysis_manager.set_last_analysis('zscore')
         
-        # Update running plot with the specific analysis data
-        if running_plot_window:
-            running_plot_window.current_analysis_type = analysis_type
-            running_plot_window.analysis_data = analysis_data
-            running_plot_window.update_plot()
+        # Update display for current animal
+        if current_animal_index < len(multi_animal_data):
+            if fiber_plot_window:
+                fiber_plot_window.set_plot_type("zscore")
         
-        if fiber_plot_window:
-            fiber_plot_window.update_running_analysis(analysis_type, analysis_data)
-
-        # Display results in a window
-        display_running_analysis_results(analysis_type, analysis_data, treadmill_behaviors)
-        
-        log_message(f"Running {analysis_type} analysis completed")
+        log_message(f"Z-score calculation completed: "
+                   f"{successful_calculations} successful, {failed_calculations} failed", "INFO")
         
     except Exception as e:
-        log_message(f"Running {analysis_type} analysis failed: {str(e)}", "ERROR")
+        log_message(f"Batch Z-score calculation failed: {str(e)}", "ERROR")
+
+def update_animal_list_display():
+    """Update animal list to show analysis status"""
+    if not multi_animal_data:
+        return
+    
+    file_listbox.delete(0, tk.END)
+    
+    for idx, animal_data in enumerate(multi_animal_data):
+        animal_id = animal_data.get('animal_id', f'Animal {idx}')
+        
+        # Add indicators for completed analyses
+        indicators = []
+        if 'treadmill_behaviors' in animal_data:
+            indicators.append('🏃')
+        if 'dff_data' in animal_data:
+            indicators.append('📊')
+        if 'zscore_data' in animal_data:
+            indicators.append('📈')
+        
+        display_text = f"{animal_id} {' '.join(indicators)}"
+        file_listbox.insert(tk.END, display_text)
+
+# Global analysis results manager
+class AnalysisResultsManager:
+    """Manage analysis results for all animals"""
+    def __init__(self):
+        self.last_analysis_type = None  # Track last analysis type
+    
+    def set_last_analysis(self, analysis_type):
+        """Set the last performed analysis type"""
+        self.last_analysis_type = analysis_type
+        log_message(f"Last analysis type set to: {analysis_type}", "INFO")
+    
+    def get_last_analysis(self):
+        """Get the last performed analysis type"""
+        return self.last_analysis_type
+
+# Initialize global analysis manager (add this near the top of the file)
+analysis_manager = AnalysisResultsManager()
 
 def display_running_analysis_results(analysis_type, analysis_data, treadmill_behaviors):
     """Display running analysis results in a new window"""
@@ -3769,338 +4322,6 @@ def setup_log_display():
     
     set_log_widget(log_text_widget)
     log_message("The log system has been initialized. All messages will be displayed here.", "INFO")
-
-def running_data_preprocess():
-    """Running data preprocessing dialog"""
-    global multi_animal_data, current_animal_index, running_channel, invert_running, threadmill_diameter
-    
-    # Get current animal data
-    if not multi_animal_data or current_animal_index >= len(multi_animal_data):
-        log_message("No animal data available for preprocessing", "WARNING")
-        return
-    
-    animal_data = multi_animal_data[current_animal_index]
-    ast2_data = animal_data.get('ast2_data_adjusted')
-    
-    if ast2_data is None:
-        log_message("No running data available for preprocessing", "WARNING")
-        return
-    
-    # Create preprocessing dialog
-    prep_window = tk.Toplevel(root)
-    prep_window.title("Running Data Preprocessing Settings")
-    prep_window.geometry("500x800")
-    prep_window.transient(root)
-    prep_window.grab_set()
-    
-    # Main frame with scrollbar for adaptive height
-    main_frame = ttk.Frame(prep_window, padding=15)
-    main_frame.pack(fill=tk.BOTH, expand=True)
-    
-    # Title
-    title_label = ttk.Label(main_frame, text="🏃 Running Data Preprocessing", 
-                           font=("Arial", 14, "bold"))
-    title_label.pack(pady=(0, 15))
-    
-    # Basic Settings Frame
-    basic_frame = ttk.LabelFrame(main_frame, text="📊 Basic Settings", padding=10)
-    basic_frame.pack(fill=tk.X, pady=(0, 10))
-    
-    # Running Channel Selection
-    channel_frame = ttk.Frame(basic_frame)
-    channel_frame.pack(fill=tk.X, pady=5)
-    
-    ttk.Label(channel_frame, text="Running Channel:").pack(side=tk.LEFT)
-    
-    # Get available channels from AST2 header
-    available_channels = []
-    if 'ast2_data' in animal_data and animal_data['ast2_data']:
-        header = animal_data['ast2_data']['header']
-        if 'activeChIDs' in header:
-            available_channels = header['activeChIDs']
-        else:
-            # Fallback: try to determine from data shape
-            if 'files' in animal_data and 'ast2' in animal_data['files']:
-                try:
-                    header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
-                    available_channels = list(range(len(raw_data)))
-                except:
-                    available_channels = [0, 1, 2, 3]  # Default fallback
-    
-    if not available_channels:
-        available_channels = [0, 1, 2, 3]  # Default fallback
-    
-    channel_var = tk.StringVar(value=str(running_channel))
-    channel_combo = ttk.Combobox(channel_frame, textvariable=channel_var, 
-                                values=available_channels, state="readonly", width=10)
-    channel_combo.pack(side=tk.RIGHT, padx=(10, 0))
-    
-    # Invert Running Checkbox
-    invert_var = tk.BooleanVar(value=invert_running)
-    invert_check = ttk.Checkbutton(basic_frame, text="Invert Running Values", 
-                                  variable=invert_var)
-    invert_check.pack(anchor="w", pady=5)
-    
-    # Threadmill Diameter
-    diameter_frame = ttk.Frame(basic_frame)
-    diameter_frame.pack(fill=tk.X, pady=5)
-    
-    ttk.Label(diameter_frame, text="Threadmill Diameter (cm):").pack(side=tk.LEFT)
-    
-    diameter_var = tk.StringVar(value=str(threadmill_diameter))
-    diameter_entry = ttk.Entry(diameter_frame, textvariable=diameter_var, width=10)
-    diameter_entry.pack(side=tk.RIGHT, padx=(10, 0))
-    
-    # Filter Configuration Frame
-    filter_frame = ttk.LabelFrame(main_frame, text="🔧 Filter Configuration", padding=10)
-    filter_frame.pack(fill=tk.X, pady=(0, 10))
-    
-    # Smoothing Method Selection
-    smooth_methods = [
-        {"name": "No Smoothing", "type": "none", "params": []},
-        {"name": "Moving Average", "type": "moving_average", 
-         "params": [
-             {"name": "window_size", "type": "int", "default": 20, "min": 3, "max": 51, "step": 2}
-         ]},
-        {"name": "Median Filter", "type": "median",
-         "params": [
-             {"name": "window_size", "type": "int", "default": 100, "min": 3, "max": 51, "step": 2}
-         ]},
-        {"name": "Savitzky-Golay", "type": "savitzky_golay",
-         "params": [
-             {"name": "window_size", "type": "int", "default": 100, "min": 5, "max": 51, "step": 2},
-             {"name": "poly_order", "type": "int", "default": 3, "min": 1, "max": 5}
-         ]},
-        {"name": "Butterworth Low-pass", "type": "butterworth",
-         "params": [
-             {"name": "sampling_rate", "type": "float", "default": 10.0, "min": 1.0, "max": 100.0},
-             {"name": "cutoff_freq", "type": "float", "default": 2.0, "min": 0.1, "max": 10.0},
-             {"name": "filter_order", "type": "int", "default": 2, "min": 1, "max": 5}
-         ]}
-    ]
-    
-    # Method selection
-    method_frame = ttk.Frame(filter_frame)
-    method_frame.pack(fill=tk.X, pady=(0, 10))
-    
-    ttk.Label(method_frame, text="Smoothing Method:").pack(side=tk.LEFT)
-    
-    method_names = [method["name"] for method in smooth_methods]
-    method_var = tk.StringVar(value=method_names[0])
-    method_combo = ttk.Combobox(method_frame, textvariable=method_var, 
-                               values=method_names, state="readonly", width=20)
-    method_combo.pack(side=tk.RIGHT, padx=(10, 0))
-    
-    # Parameters frame (will be populated dynamically)
-    params_frame = ttk.Frame(filter_frame)
-    params_frame.pack(fill=tk.X, pady=5)
-    
-    # Store parameter variables
-    param_vars = {}
-    
-    def update_parameters(*args):
-        """Update parameter inputs based on selected method"""
-        # Clear previous parameters
-        for widget in params_frame.winfo_children():
-            widget.destroy()
-        
-        param_vars.clear()
-        
-        # Find selected method
-        selected_method_name = method_var.get()
-        selected_method = None
-        for method in smooth_methods:
-            if method["name"] == selected_method_name:
-                selected_method = method
-                break
-        
-        if not selected_method or not selected_method["params"]:
-            # No parameters needed
-            ttk.Label(params_frame, text="No parameters needed for this method", 
-                     foreground="gray").pack(pady=10)
-            # Adjust window height
-            return
-        
-        # Create parameter inputs
-        ttk.Label(params_frame, text="Parameters:", font=("Arial", 9, "bold")).pack(anchor="w", pady=(0, 5))
-        
-        for param in selected_method["params"]:
-            param_frame = ttk.Frame(params_frame)
-            param_frame.pack(fill=tk.X, pady=2)
-            
-            ttk.Label(param_frame, text=f"{param['name'].replace('_', ' ').title()}:").pack(side=tk.LEFT)
-            
-            if param['type'] == 'int':
-                var = tk.IntVar(value=param['default'])
-                widget = ttk.Spinbox(param_frame, from_=param['min'], to=param['max'], 
-                                   textvariable=var, width=8)
-            else:  # float
-                var = tk.DoubleVar(value=param['default'])
-                widget = ttk.Spinbox(param_frame, from_=param['min'], to=param['max'], 
-                                   increment=0.1, textvariable=var, width=8)
-            
-            widget.pack(side=tk.RIGHT, padx=(10, 0))
-            param_vars[param['name']] = var
-    
-    # Initial parameter setup
-    method_var.trace('w', update_parameters)
-    update_parameters()
-    
-    # Preview Frame
-    preview_frame = ttk.LabelFrame(main_frame, text="👁️ Preview", padding=10)
-    preview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
-    
-    # Create matplotlib figure for preview
-    fig = Figure(figsize=(8, 3), dpi=80)
-    ax = fig.add_subplot(111)
-    canvas = FigureCanvasTkAgg(fig, preview_frame)
-    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-    
-    def update_preview():
-        """Update the preview plot with current settings"""
-        ax.clear()
-        
-        # Get current filter settings
-        selected_method_name = method_var.get()
-        selected_method = None
-        for method in smooth_methods:
-            if method["name"] == selected_method_name:
-                selected_method = method
-                break
-        
-        filter_settings = []
-        if selected_method and selected_method["type"] != "none":
-            params = {}
-            for param_name, var in param_vars.items():
-                params[param_name] = var.get()
-            
-            filter_settings.append({
-                'type': selected_method['type'],
-                'params': params
-            })
-        
-        # Apply preprocessing
-        processed_data = preprocess_running_data(ast2_data, filter_settings)
-        
-        if processed_data:
-            timestamps = processed_data['timestamps']
-            original_speed = processed_data['original_speed']
-            filtered_speed = processed_data['filtered_speed']
-            
-            invert_preview = invert_var.get()
-            if invert_preview:
-                original_speed = -original_speed
-                filtered_speed = -filtered_speed
-            
-            # Plot original and filtered data
-            ax.plot(timestamps, original_speed, 'b-', alpha=0.7, label='Original', linewidth=1)
-            ax.plot(timestamps, filtered_speed, 'r-', label='Filtered', linewidth=1.5)
-            
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Speed (cm/s)')
-            ax.set_title('Running Speed: Original vs Filtered')
-            ax.legend()
-            ax.grid(False)
-            
-            canvas.draw()
-    
-    def apply_all_settings():
-        """Apply all settings (channel, invert, diameter, and filters)"""
-        global running_channel, invert_running, threadmill_diameter
-        
-        try:
-            # Apply basic settings
-            new_channel = int(channel_var.get())
-            if new_channel < 0:
-                raise ValueError("Channel must be non-negative")
-            running_channel = new_channel
-            
-            invert_running = invert_var.get()
-            
-            new_diameter = float(diameter_var.get())
-            if new_diameter <= 0:
-                raise ValueError("Diameter must be positive")
-            threadmill_diameter = new_diameter
-            
-            # Update AST2 data with new settings
-            if 'files' in animal_data and 'ast2' in animal_data['files']:
-                try:
-                    header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
-                    if running_channel < len(raw_data):
-                        speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
-                        ast2_data_updated = {
-                            'header': header,
-                            'data': speed
-                        }
-                        animal_data['ast2_data'] = ast2_data_updated
-                        
-                        # Re-align data
-                        align_data(animal_data)
-                        
-                        log_message(f"AST2 data updated with channel {running_channel}, diameter {threadmill_diameter} cm, invert: {invert_running}")
-                    else:
-                        log_message(f"Invalid channel: {running_channel}, max available: {len(raw_data)-1}", "ERROR")
-                        return
-                except Exception as e:
-                    log_message(f"Failed to update AST2 data: {str(e)}", "ERROR")
-                    return
-            
-            # Apply filter settings
-            selected_method_name = method_var.get()
-            selected_method = None
-            for method in smooth_methods:
-                if method["name"] == selected_method_name:
-                    selected_method = method
-                    break
-            
-            filter_settings = []
-            if selected_method and selected_method["type"] != "none":
-                params = {}
-                for param_name, var in param_vars.items():
-                    params[param_name] = var.get()
-                
-                filter_settings.append({
-                    'type': selected_method['type'],
-                    'params': params
-                })
-            
-            # Apply preprocessing
-            processed_data = preprocess_running_data(animal_data['ast2_data_adjusted'], filter_settings)
-            
-            if processed_data:
-                # Store processed data
-                animal_data['running_processed_data'] = processed_data
-                
-                # Update running visualization
-                if running_plot_window:
-                    running_plot_window.animal_data = animal_data
-                    running_plot_window.update_plot()
-                
-                log_message(f"Running settings applied: Channel {running_channel}, Diameter {threadmill_diameter}cm, Invert {invert_running}, Filter: {selected_method_name}")
-                prep_window.destroy()
-            else:
-                log_message("Failed to process running data", "ERROR")
-                
-        except ValueError as e:
-            log_message(f"Invalid setting value: {str(e)}", "ERROR")
-        except Exception as e:
-            log_message(f"Error applying running settings: {str(e)}", "ERROR")
-    
-    # Button Frame
-    button_frame = ttk.Frame(main_frame)
-    button_frame.pack(fill=tk.X, pady=10)
-    
-    ttk.Button(button_frame, text="🔄 Update Preview", 
-              command=update_preview).pack(side=tk.LEFT, padx=5)
-    
-    ttk.Button(button_frame, text="✅ Apply All Settings", 
-              command=apply_all_settings).pack(side=tk.LEFT, padx=5)
-    
-    ttk.Button(button_frame, text="❌ Cancel", 
-              command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
-    
-    # Initial preview
-    update_preview()
 
 def init_multimodal_analysis():
     """Initialize multimodal analyzer"""
