@@ -192,7 +192,9 @@ class MultimodalAnalysis:
         
         general_onsets = treadmill_behaviors.get('general_onsets', [])
         running_timestamps = ast2_data['data']['timestamps']
-        running_speed = ast2_data['data']['speed']
+        processed_data = animal_data.get('running_processed_data')
+        running_speed = processed_data['filtered_speed']
+        # running_speed = ast2_data['data']['speed']
         
         # Get fiber timestamps
         preprocessed_data = animal_data['preprocessed_data']
@@ -1099,7 +1101,9 @@ class AcrossdayAnalysis:
                 # Get data
                 ast2_data = animal_data['ast2_data_adjusted']
                 running_timestamps = ast2_data['data']['timestamps']
-                running_speed = ast2_data['data']['speed']
+                processed_data = animal_data.get('running_processed_data')
+                running_speed = processed_data['filtered_speed']
+                # running_speed = ast2_data['data']['speed']
                 
                 preprocessed_data = animal_data['preprocessed_data']
                 channels = animal_data.get('channels', {})
