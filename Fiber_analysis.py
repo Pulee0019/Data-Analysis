@@ -297,7 +297,7 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
         log_message(f"Preprocessing failed: {str(e)}", "ERROR")
         return False
 
-def calculate_and_plot_dff(animal_data=None, target_signal="470", reference_signal="410", 
+def calculate_dff(animal_data=None, target_signal="470", reference_signal="410", 
                           baseline_period=(0, 60), apply_baseline=False):
     """Calculate and plot ΔF/F"""
     try:
@@ -390,33 +390,12 @@ def calculate_and_plot_dff(animal_data=None, target_signal="470", reference_sign
             globals()['preprocessed_data'] = preprocessed_data
             globals()['dff_data'] = dff_data_dict
         
-        fig = Figure(figsize=(10, 6), dpi=100)
-        ax = fig.add_subplot(111)
-        
-        colors = plt.cm.tab10(np.linspace(0, 1, len(active_channels)))
-        for i, channel_num in enumerate(active_channels):
-            if str(channel_num) in dff_data_dict:
-                color = colors[i]
-                ax.plot(time_data, dff_data_dict[str(channel_num)], color=color, 
-                       label=f'CH{channel_num} ΔF/F')
-        
-        if reference_signal == "baseline":
-            ax.axvspan(baseline_period[0], baseline_period[1], color='green', alpha=0.2)
-        
-        ax.set_title("ΔF/F")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("ΔF/F")
-        ax.legend()
-        ax.grid(False)
-        
-        plt.show()
-        
     except Exception as e:
         log_message(f"ΔF/F calculation failed: {str(e)}", "ERROR")
         import traceback
         traceback.print_exc()
 
-def calculate_and_plot_zscore(animal_data=None, target_signal="470", reference_signal="410", 
+def calculate_zscore(animal_data=None, target_signal="470", reference_signal="410", 
                              baseline_period=(0, 60), apply_baseline=False):
     """Calculate and plot Z-score"""
     try:
@@ -485,27 +464,7 @@ def calculate_and_plot_zscore(animal_data=None, target_signal="470", reference_s
         else:
             globals()['preprocessed_data'] = preprocessed_data
             globals()['zscore_data'] = zscore_data_dict
-        
-        fig = Figure(figsize=(10, 6), dpi=100)
-        ax = fig.add_subplot(111)
-        
-        colors = plt.cm.tab10(np.linspace(0, 1, len(active_channels)))
-        for i, channel_num in enumerate(active_channels):
-            if str(channel_num) in zscore_data_dict:
-                color = colors[i]
-                ax.plot(time_data, zscore_data_dict[str(channel_num)], color=color, 
-                       label=f'CH{channel_num} Z-score')
-        
-        if reference_signal == "baseline":
-            ax.axvspan(baseline_period[0], baseline_period[1], color='green', alpha=0.2)
-        
-        ax.set_title("Z-score")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Z-score")
-        ax.legend()
-        ax.grid(False)
-        
-        plt.show()
+
         return zscore_data_dict
         
     except Exception as e:

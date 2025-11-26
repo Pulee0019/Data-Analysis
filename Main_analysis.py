@@ -18,7 +18,7 @@ import os
 import re
 
 from Behavior_analysis import position_analysis, displacement_analysis, x_displacement_analysis
-from Fiber_analysis import apply_preprocessing, calculate_and_plot_dff, calculate_and_plot_zscore
+from Fiber_analysis import apply_preprocessing, calculate_dff, calculate_zscore
 from Running_analysis import classify_treadmill_behavior, preprocess_running_data
 from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis
 from logger import log_message, set_log_widget
@@ -4087,7 +4087,7 @@ def calculate_and_plot_dff_wrapper():
                     failed_calculations += 1
                     continue
                 
-                calculate_and_plot_dff(
+                calculate_dff(
                     animal_data, 
                     target_signal,
                     reference_signal,
@@ -4129,7 +4129,7 @@ def calculate_and_plot_zscore_wrapper():
             animal_id = animal_data.get('animal_id', f'Animal {idx}')
             
             try:
-                zscore_data = calculate_and_plot_zscore(
+                zscore_data = calculate_zscore(
                     animal_data,
                     target_signal_var.get(),
                     reference_signal_var.get(),
