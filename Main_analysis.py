@@ -3882,19 +3882,19 @@ def running_data_preprocess():
                             if processed_data:
                                 animal_data['running_processed_data'] = processed_data
                                 successful += 1
-                                log_message(f"✓ Processed {animal_id}", "INFO")
+                                log_message(f"Processed {animal_id}", "INFO")
                             else:
                                 failed += 1
-                                log_message(f"✗ Failed to process {animal_id}", "ERROR")
+                                log_message(f"Failed to process {animal_id}", "ERROR")
                         else:
                             failed += 1
-                            log_message(f"✗ No adjusted AST2 data for {animal_id}", "ERROR")
+                            log_message(f"No adjusted AST2 data for {animal_id}", "ERROR")
                     else:
-                        log_message(f"✗ Invalid channel {running_channel} for {animal_id}, max: {len(raw_data)-1}", "ERROR")
+                        log_message(f"Invalid channel {running_channel} for {animal_id}, max: {len(raw_data)-1}", "ERROR")
                         failed += 1
                         
                 except Exception as e:
-                    log_message(f"✗ Error processing {animal_id}: {str(e)}", "ERROR")
+                    log_message(f"Error processing {animal_id}: {str(e)}", "ERROR")
                     failed += 1
             
             # Update visualization for current animal
@@ -3973,10 +3973,10 @@ def running_data_analysis_wrapper(analysis_type):
                 animal_data['last_running_analysis_type'] = analysis_type
                 
                 successful_analyses += 1
-                log_message(f"✓ Analyzed {animal_id}: {analysis_type}", "INFO")
+                log_message(f"Analyzed {animal_id}: {analysis_type}", "INFO")
                 
             except Exception as e:
-                log_message(f"✗ Failed to analyze {animal_id}: {str(e)}", "ERROR")
+                log_message(f"Failed to analyze {animal_id}: {str(e)}", "ERROR")
                 failed_analyses += 1
         
         # Set this as the last analysis
@@ -4039,13 +4039,13 @@ def apply_preprocessing_wrapper():
                 
                 if success:
                     successful_preprocessing += 1
-                    log_message(f"✓ Preprocessed {animal_id}", "INFO")
+                    log_message(f"Preprocessed {animal_id}", "INFO")
                 else:
                     failed_preprocessing += 1
-                    log_message(f"✗ Failed to preprocess {animal_id}", "ERROR")
+                    log_message(f"Failed to preprocess {animal_id}", "ERROR")
                     
             except Exception as e:
-                log_message(f"✗ Error preprocessing {animal_id}: {str(e)}", "ERROR")
+                log_message(f"Error preprocessing {animal_id}: {str(e)}", "ERROR")
                 failed_preprocessing += 1
         
         # Set last analysis type
@@ -4096,10 +4096,10 @@ def calculate_and_plot_dff_wrapper():
                 )
                 
                 successful_calculations += 1
-                log_message(f"✓ Calculated ΔF/F for {animal_id}", "INFO")
+                log_message(f"Calculated ΔF/F for {animal_id}", "INFO")
                 
             except Exception as e:
-                log_message(f"✗ Failed ΔF/F for {animal_id}: {str(e)}", "ERROR")
+                log_message(f"Failed ΔF/F for {animal_id}: {str(e)}", "ERROR")
                 failed_calculations += 1
         
         analysis_manager.set_last_analysis('dff')
@@ -4140,12 +4140,12 @@ def calculate_and_plot_zscore_wrapper():
                 if zscore_data:
                     animal_data['zscore_data'] = zscore_data
                     successful_calculations += 1
-                    log_message(f"✓ Calculated Z-score for {animal_id}", "INFO")
+                    log_message(f"Calculated Z-score for {animal_id}", "INFO")
                 else:
                     failed_calculations += 1
                     
             except Exception as e:
-                log_message(f"✗ Failed Z-score for {animal_id}: {str(e)}", "ERROR")
+                log_message(f"Failed Z-score for {animal_id}: {str(e)}", "ERROR")
                 failed_calculations += 1
         
         analysis_manager.set_last_analysis('zscore')

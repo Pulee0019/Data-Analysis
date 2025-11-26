@@ -290,76 +290,12 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
         if apply_motion and reference_signal == "410":
             if not motion_correction(animal_data, target_signal, reference_signal):
                 return False
-        
-        plot_preprocessed(animal_data, target_signal, reference_signal, baseline_period, apply_baseline)
-        
+
         return True
         
     except Exception as e:
         log_message(f"Preprocessing failed: {str(e)}", "ERROR")
         return False
-
-def plot_preprocessed(animal_data=None, target_signal="470", reference_signal="410", baseline_period=(0, 60), apply_baseline=False):
-    """Plot preprocessed data"""
-    try:
-        if animal_data:
-            if 'preprocessed_data' not in animal_data:
-                log_message("Please preprocess data first", "WARNING")
-                return
-            preprocessed_data = animal_data['preprocessed_data']
-            channels = animal_data.get('channels', {})
-            active_channels = animal_data.get('active_channels', [])
-        else:
-            if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please preprocess data first", "WARNING")
-                return
-            preprocessed_data = globals()['preprocessed_data']
-            channels = globals().get('channels', {})
-            active_channels = globals().get('active_channels', [])
-        
-        fig = Figure(figsize=(10, 6), dpi=100)
-        ax = fig.add_subplot(111)
-        
-        time_col = channels['time']
-        time_data = preprocessed_data[time_col]
-        
-        colors = plt.cm.tab10(np.linspace(0, 1, len(active_channels)))
-        for i, channel_num in enumerate(active_channels):
-            color = colors[i]
-            
-            target_col = f"CH{channel_num}_{target_signal}"
-            if target_col in preprocessed_data.columns:
-                ax.plot(time_data, preprocessed_data[target_col], color=color, alpha=0.3, 
-                       label=f'CH{channel_num} Raw')
-            
-            smoothed_col = f"CH{channel_num}_{target_signal}_smoothed"
-            if smoothed_col in preprocessed_data.columns:
-                ax.plot(time_data, preprocessed_data[smoothed_col], color=color, alpha=0.7, 
-                       label=f'CH{channel_num} Smoothed')
-            
-            baseline_corrected_col = f"CH{channel_num}_baseline_corrected"
-            if baseline_corrected_col in preprocessed_data.columns:
-                ax.plot(time_data, preprocessed_data[baseline_corrected_col], color=color, 
-                       label=f'CH{channel_num} Baseline Corrected')
-            
-            motion_corrected_col = f"CH{channel_num}_motion_corrected"
-            if motion_corrected_col in preprocessed_data.columns:
-                ax.plot(time_data, preprocessed_data[motion_corrected_col], color=color, 
-                       label=f'CH{channel_num} Motion Corrected')
-        
-        if apply_baseline and reference_signal == "baseline":
-            ax.axvspan(baseline_period[0], baseline_period[1], color='green', alpha=0.2)
-        
-        ax.set_title("Preprocessed Fiber Data")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Fluorescence")
-        ax.legend()
-        ax.grid(False)
-        
-        plt.show()
-        
-    except Exception as e:
-        log_message(f"Failed to plot preprocessed data: {str(e)}", "ERROR")
 
 def calculate_and_plot_dff(animal_data=None, target_signal="470", reference_signal="410", 
                           baseline_period=(0, 60), apply_baseline=False):

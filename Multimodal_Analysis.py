@@ -48,7 +48,7 @@ class MultimodalAnalysis:
         param_window.grab_set()
         
         # Title
-        title_label = tk.Label(param_window, text="⏱️ GENERAL ONSETS Analysis Settings", 
+        title_label = tk.Label(param_window, text="GENERAL ONSETS Analysis Settings", 
                               font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8", fg="#2c3e50")
         title_label.pack(pady=15)
         
@@ -130,12 +130,12 @@ class MultimodalAnalysis:
         button_frame = tk.Frame(param_window, bg="#f8f8f8")
         button_frame.pack(pady=15)
         
-        run_btn = tk.Button(button_frame, text="🚀 Start Analysis", command=run_analysis,
+        run_btn = tk.Button(button_frame, text="Start Analysis", command=run_analysis,
                            bg="#3498db", fg="white", font=("Microsoft YaHei", 9, "bold"),
                            relief=tk.FLAT, padx=15, pady=5)
         run_btn.pack(side=tk.LEFT, padx=10)
         
-        cancel_btn = tk.Button(button_frame, text="❌ Cancel", 
+        cancel_btn = tk.Button(button_frame, text="Cancel", 
                               command=param_window.destroy,
                               bg="#95a5a6", fg="white", font=("Microsoft YaHei", 9),
                               relief=tk.FLAT, padx=15, pady=5)
@@ -275,26 +275,8 @@ class MultimodalAnalysis:
         # Create result window with UI styling
         result_window = tk.Toplevel(self.root)
         result_window.title(f"GENERAL ONSETS Analysis - Channels {channel_label}")
-        result_window.geometry("1300x900")
+        result_window.geometry("zoomed")
         result_window.configure(bg='#f8f8f8')
-        
-        # Main container
-        main_container = tk.Frame(result_window, bg='#f8f8f8')
-        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # Title
-        title_label = tk.Label(main_container, 
-                              text=f"GENERAL ONSETS Analysis - Channels {channel_label}",
-                              font=("Microsoft YaHei", 14, "bold"), bg="#f8f8f8", fg="#2c3e50")
-        title_label.pack(pady=(0, 15))
-        
-        # Info panel
-        info_text = (f"Analysis Info: {len(general_onsets)} events, "
-                    f"Time window: [-{pre_time}, {post_time}]s, "
-                    f"Channels: {channel_label}")
-        info_label = tk.Label(main_container, text=info_text,
-                             font=("Microsoft YaHei", 9), bg="#f8f8f8", fg="#34495e")
-        info_label.pack(pady=(0, 10))
         
         # Create matplotlib figure
         fig = Figure(figsize=(12, 8), dpi=100)
@@ -320,32 +302,19 @@ class MultimodalAnalysis:
                                       f"Fiber Z-score Heatmap (CH{channel_label})")
         
         fig.tight_layout()
-        
+
         # Add canvas to window
-        canvas_frame = tk.Frame(main_container, bg='#f8f8f8')
+        canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
         canvas_frame.pack(fill=tk.BOTH, expand=True)
         
         canvas = FigureCanvasTkAgg(fig, canvas_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        
-        # Control panel
-        control_frame = tk.Frame(main_container, bg='#f8f8f8')
-        control_frame.pack(fill=tk.X, pady=15)
-        
-        # Save button
-        save_btn = tk.Button(control_frame, text="💾 Save Figure", 
-                           command=lambda: self._save_figure(fig),
-                           bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
-                           relief=tk.FLAT, padx=20, pady=8)
-        save_btn.pack(side=tk.RIGHT, padx=10)
-        
-        # Close button
-        close_btn = tk.Button(control_frame, text="❌ Close", 
-                            command=result_window.destroy,
-                            bg="#e74c3c", fg="white", font=("Microsoft YaHei", 10),
-                            relief=tk.FLAT, padx=20, pady=8)
-        close_btn.pack(side=tk.RIGHT, padx=10)
+
+        toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+        toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+
+        self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
         log_message(f"GENERAL ONSETS analysis completed: {len(general_onsets)} events, "
                    f"channels {channel_label}, time window [-{pre_time},{post_time}]s")
@@ -427,7 +396,7 @@ class MultimodalAnalysis:
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial Number')
             ax.set_title(title)
-            plt.colorbar(im, ax=ax, label='Running Speed (cm/s)')
+            plt.colorbar(im, ax=ax, label='Running Speed (cm/s)', orientation='horizontal')
     
     def _plot_fiber_zscore_heatmap(self, ax, zscore_episodes, time_array, title):
         """Plot fiber z-score heatmap using pre-calculated z-score episodes"""
@@ -443,7 +412,7 @@ class MultimodalAnalysis:
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial Number')
             ax.set_title(title)
-            plt.colorbar(im, ax=ax, label='Z-score')
+            plt.colorbar(im, ax=ax, label='Z-score', orientation='horizontal')
     
     def continuous_locomotion_analysis(self):
         """Analyze trajectories during CONTINUOUS LOCOMOTION PERIODS"""
@@ -484,29 +453,13 @@ class MultimodalAnalysis:
         result_window.title("CONTINUOUS LOCOMOTION Trajectory Analysis")
         result_window.geometry("1200x900")
         result_window.configure(bg='#f8f8f8')
-        
-        # Main container
-        main_container = tk.Frame(result_window, bg='#f8f8f8')
-        main_container.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        
-        # Title and info panel
-        title_label = tk.Label(main_container, 
-                              text="Continuous Locomotion Trajectory Analysis",
-                              font=("Microsoft YaHei", 16, "bold"), bg="#f8f8f8", fg="#2c3e50")
-        title_label.pack(pady=(0, 10))
-        
-        info_text = (f"Analysis Info: {len(locomotion_periods)} locomotion periods, "
-                    f"{len(selected_bodyparts)} bodyparts, Video FPS: {video_fps}")
-        info_label = tk.Label(main_container, text=info_text,
-                             font=("Microsoft YaHei", 10), bg="#f8f8f8", fg="#34495e")
-        info_label.pack(pady=(0, 15))
-        
+
         # Create matplotlib figure with UI styling
         fig = Figure(figsize=(10, 8), dpi=100)
         ax = fig.add_subplot(111)
         
         # Set graph properties - UI style
-        ax.set_title("🔍 Continuous Locomotion Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
+        ax.set_title("Continuous Locomotion Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
         ax.set_xlabel("X Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.set_ylabel("Y Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.grid(True, alpha=0.3, linestyle='--', color='#bdc3c7')
@@ -584,30 +537,17 @@ class MultimodalAnalysis:
         ax.legend(loc='upper right', framealpha=0.9, fontsize=10)
         
         # Add canvas to window
-        canvas_frame = tk.Frame(main_container, bg='#f8f8f8')
+        canvas_frame = tk.Frame(result_window, bg='#f8f8f8')
         canvas_frame.pack(fill=tk.BOTH, expand=True)
         
         canvas = FigureCanvasTkAgg(fig, canvas_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
-        # Control panel
-        control_frame = tk.Frame(main_container, bg='#f8f8f8')
-        control_frame.pack(fill=tk.X, pady=15)
-        
-        # Save button
-        save_btn = tk.Button(control_frame, text="💾 Save Figure", 
-                           command=lambda: self._save_figure(fig),
-                           bg="#27ae60", fg="white", font=("Microsoft YaHei", 10, "bold"),
-                           relief=tk.FLAT, padx=20, pady=8)
-        save_btn.pack(side=tk.RIGHT, padx=10)
-        
-        # Close button
-        close_btn = tk.Button(control_frame, text="❌ Close", 
-                            command=result_window.destroy,
-                            bg="#e74c3c", fg="white", font=("Microsoft YaHei", 10),
-                            relief=tk.FLAT, padx=20, pady=8)
-        close_btn.pack(side=tk.RIGHT, padx=10)
+        toolbar_frame = tk.Frame(canvas_frame, bg="#f5f5f5")
+        toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
+
+        self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
         log_message(f"Continuous locomotion trajectory analysis completed: {len(locomotion_periods)} periods, {len(selected_bodyparts)} bodyparts")
 
@@ -1022,12 +962,12 @@ class AcrossdayAnalysis:
         button_frame = tk.Frame(param_window, bg="#f8f8f8")
         button_frame.pack(pady=20)
         
-        run_btn = tk.Button(button_frame, text="🚀 Start Analysis", command=start_with_params,
+        run_btn = tk.Button(button_frame, text="Start Analysis", command=start_with_params,
                         bg="#3498db", fg="white", font=("Microsoft YaHei", 9, "bold"),
                         relief=tk.FLAT, padx=15, pady=5)
         run_btn.pack(side=tk.LEFT, padx=10)
         
-        cancel_btn = tk.Button(button_frame, text="❌ Cancel", 
+        cancel_btn = tk.Button(button_frame, text="Cancel", 
                             command=param_window.destroy,
                             bg="#95a5a6", fg="white", font=("Microsoft YaHei", 9),
                             relief=tk.FLAT, padx=15, pady=5)
@@ -1232,7 +1172,7 @@ class AcrossdayAnalysis:
         # Create result window
         result_window = tk.Toplevel(self.root)
         result_window.title("Acrossday Analysis Results - All Days")
-        result_window.geometry("1600x1000")
+        result_window.geometry("zoomed")
         result_window.configure(bg="#ffffff")
         
         # Create figure with subplots
@@ -1318,7 +1258,7 @@ class AcrossdayAnalysis:
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial (All Days)')
             ax.set_title('Running Heatmap - All Days')
-            plt.colorbar(im, ax=ax, label='Speed (cm/s)')
+            plt.colorbar(im, ax=ax, label='Speed (cm/s)', orientation='horizontal')
         else:
             ax.text(0.5, 0.5, 'No running data available', 
                 ha='center', va='center', transform=ax.transAxes,
@@ -1343,7 +1283,7 @@ class AcrossdayAnalysis:
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial (All Days)')
             ax.set_title('Fiber Heatmap - All Days')
-            plt.colorbar(im, ax=ax, label='Z-score')
+            plt.colorbar(im, ax=ax, label='Z-score', orientation='horizontal')
         else:
             ax.text(0.5, 0.5, 'No fiber data available', 
                 ha='center', va='center', transform=ax.transAxes,
@@ -1416,7 +1356,7 @@ class AcrossdayAnalysis:
             ax3.set_xlabel('Time (s)')
             ax3.set_ylabel('Trial')
             ax3.set_title(f'{day_name} - Running Heatmap')
-            plt.colorbar(im1, ax=ax3, label='Speed (cm/s)')
+            plt.colorbar(im1, ax=ax3, label='Speed (cm/s)', orientation='horizontal')
         else:
             ax3.text(0.5, 0.5, 'No running episodes', 
                     ha='center', va='center', transform=ax3.transAxes,
@@ -1438,7 +1378,7 @@ class AcrossdayAnalysis:
             ax4.set_xlabel('Time (s)')
             ax4.set_ylabel('Trial')
             ax4.set_title(f'{day_name} - Fiber Heatmap')
-            plt.colorbar(im2, ax=ax4, label='Z-score')
+            plt.colorbar(im2, ax=ax4, label='Z-score', orientation='horizontal')
         else:
             ax4.text(0.5, 0.5, 'No fiber episodes', 
                     ha='center', va='center', transform=ax4.transAxes,
