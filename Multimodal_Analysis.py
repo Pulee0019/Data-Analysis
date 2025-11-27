@@ -547,20 +547,6 @@ class MultimodalAnalysis:
         
         log_message(f"Continuous locomotion trajectory analysis completed: {len(locomotion_periods)} periods, {len(selected_bodyparts)} bodyparts")
 
-    def _save_figure(self, fig):
-        """Save figure to file"""
-        filename = filedialog.asksaveasfilename(
-            title="Save Figure",
-            defaultextension=".png",
-            filetypes=[("PNG Image", "*.png"), ("PDF File", "*.pdf"), ("SVG Image", "*.svg")]
-        )
-        if filename:
-            try:
-                fig.savefig(filename, dpi=300, bbox_inches='tight', facecolor='white')
-                log_message(f"Figure saved: {filename}")
-            except Exception as e:
-                log_message(f"Failed to save figure: {str(e)}", "ERROR")
-
 class AcrossdayAnalysis:
     def __init__(self, root, multi_animal_data=None):
         self.root = root
