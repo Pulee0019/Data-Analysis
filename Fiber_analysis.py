@@ -57,7 +57,7 @@ def plot_raw_data(animal_data=None):
         log_message(f"Failed to plot raw data: {str(e)}", "ERROR")
 
 def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470"):
-    """Apply smoothing to fiber data"""
+    """Apply smoothing to fiber data - supports combined wavelengths"""
     try:
         if animal_data is not None and not isinstance(animal_data, dict):
             log_message(f"Invalid animal_data type: {type(animal_data)}", "ERROR")
@@ -101,13 +101,18 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         if not isinstance(active_channels, list):
             active_channels = [active_channels] if active_channels else []
         
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        
         for channel_num in active_channels:
             if channel_num in channel_data:
-                target_col = channel_data[channel_num].get(target_signal)
-                if target_col and target_col in preprocessed_data.columns:
-                    smoothed_col = f"CH{channel_num}_{target_signal}_smoothed"
-                    preprocessed_data[smoothed_col] = savgol_filter(
-                        preprocessed_data[target_col], window_size, poly_order)
+                # Process each wavelength separately
+                for wavelength in target_wavelengths:
+                    target_col = channel_data[channel_num].get(wavelength)
+                    if target_col and target_col in preprocessed_data.columns:
+                        smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                        preprocessed_data[smoothed_col] = savgol_filter(
+                            preprocessed_data[target_col], window_size, poly_order)
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
@@ -121,7 +126,7 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         return False
     
 def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470"):
-    """Apply baseline correction to fiber data"""
+    """Apply baseline correction to fiber data - supports combined wavelengths"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -146,48 +151,53 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         time_col = channels['time']
         time_data = preprocessed_data[time_col]
         
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        
         for channel_num in active_channels:
             if channel_num in channel_data:
-                target_col = channel_data[channel_num].get(target_signal)
-                if not target_col or target_col not in preprocessed_data.columns:
-                    continue
-                
-                smoothed_col = f"CH{channel_num}_{target_signal}_smoothed"
-                if smoothed_col in preprocessed_data.columns:
-                    signal_col = smoothed_col
-                else:
-                    signal_col = target_col
-                
-                signal_data = preprocessed_data[signal_col].values
-                
-                if model_type.lower() == "exponential":
-                    def exp_model(t, a, b, c):
-                        return a * np.exp(-b * t) + c
+                # Process each wavelength separately
+                for wavelength in target_wavelengths:
+                    target_col = channel_data[channel_num].get(wavelength)
+                    if not target_col or target_col not in preprocessed_data.columns:
+                        continue
                     
-                    p0 = [
-                        np.max(signal_data) - np.min(signal_data),
-                        0.01,
-                        np.min(signal_data)
-                    ]
+                    smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                    if smoothed_col in preprocessed_data.columns:
+                        signal_col = smoothed_col
+                    else:
+                        signal_col = target_col
                     
-                    try:
-                        params, _ = curve_fit(exp_model, time_data, signal_data, p0=p0, maxfev=5000)
-                        baseline_pred = exp_model(time_data, *params)
-                    except Exception as e:
-                        log_message(f"Exponential fit failed: {str(e)}, using polynomial instead", "INFO")
+                    signal_data = preprocessed_data[signal_col].values
+                    
+                    if model_type.lower() == "exponential":
+                        def exp_model(t, a, b, c):
+                            return a * np.exp(-b * t) + c
+                        
+                        p0 = [
+                            np.max(signal_data) - np.min(signal_data),
+                            0.01,
+                            np.min(signal_data)
+                        ]
+                        
+                        try:
+                            params, _ = curve_fit(exp_model, time_data, signal_data, p0=p0, maxfev=5000)
+                            baseline_pred = exp_model(time_data, *params)
+                        except Exception as e:
+                            log_message(f"Exponential fit failed: {str(e)}, using polynomial instead", "INFO")
+                            X = time_data.values.reshape(-1, 1)
+                            model = LinearRegression()
+                            model.fit(X, signal_data)
+                            baseline_pred = model.predict(X)
+                    else:
                         X = time_data.values.reshape(-1, 1)
                         model = LinearRegression()
                         model.fit(X, signal_data)
                         baseline_pred = model.predict(X)
-                else:
-                    X = time_data.values.reshape(-1, 1)
-                    model = LinearRegression()
-                    model.fit(X, signal_data)
-                    baseline_pred = model.predict(X)
-                
-                baseline_corrected_col = f"CH{channel_num}_baseline_corrected"
-                preprocessed_data[baseline_corrected_col] = signal_data - baseline_pred
-                preprocessed_data[f"CH{channel_num}_baseline_pred"] = baseline_pred
+                    
+                    baseline_corrected_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
+                    preprocessed_data[baseline_corrected_col] = signal_data - baseline_pred
+                    preprocessed_data[f"CH{channel_num}_{wavelength}_baseline_pred"] = baseline_pred
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
@@ -201,7 +211,7 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         return False
 
 def motion_correction(animal_data=None, target_signal="470", reference_signal="410"):
-    """Apply motion correction to fiber data"""
+    """Apply motion correction to fiber data - supports combined wavelengths"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -227,6 +237,9 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
             log_message("Motion correction requires 410nm as reference signal", "WARNING")
             return False
         
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        
         for channel_num in active_channels:
             if channel_num in channel_data:
                 ref_col = channel_data[channel_num].get('410')
@@ -234,29 +247,31 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
                     log_message(f"No 410nm data for channel CH{channel_num}", "INFO")
                     continue
                 
-                target_col = channel_data[channel_num].get(target_signal)
-                if not target_col or target_col not in preprocessed_data.columns:
-                    continue
-                
-                smoothed_col = f"CH{channel_num}_{target_signal}_smoothed"
-                if smoothed_col in preprocessed_data.columns:
-                    signal_col = smoothed_col
-                else:
-                    signal_col = target_col
-                
-                signal_data = preprocessed_data[signal_col]
-                ref_data = preprocessed_data[ref_col]
-                
-                X = ref_data.values.reshape(-1, 1)
-                y = signal_data.values
-                model = LinearRegression()
-                model.fit(X, y)
-                
-                predicted_signal = model.predict(X)
-                
-                motion_corrected_col = f"CH{channel_num}_motion_corrected"
-                preprocessed_data[motion_corrected_col] = signal_data - predicted_signal
-                preprocessed_data[f"CH{channel_num}_fitted_ref"] = predicted_signal
+                # Process each wavelength separately
+                for wavelength in target_wavelengths:
+                    target_col = channel_data[channel_num].get(wavelength)
+                    if not target_col or target_col not in preprocessed_data.columns:
+                        continue
+                    
+                    smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                    if smoothed_col in preprocessed_data.columns:
+                        signal_col = smoothed_col
+                    else:
+                        signal_col = target_col
+                    
+                    signal_data = preprocessed_data[signal_col]
+                    ref_data = preprocessed_data[ref_col]
+                    
+                    X = ref_data.values.reshape(-1, 1)
+                    y = signal_data.values
+                    model = LinearRegression()
+                    model.fit(X, y)
+                    
+                    predicted_signal = model.predict(X)
+                    
+                    motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
+                    preprocessed_data[motion_corrected_col] = signal_data - predicted_signal
+                    preprocessed_data[f"CH{channel_num}_{wavelength}_fitted_ref"] = predicted_signal
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
@@ -299,7 +314,7 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
 
 def calculate_dff(animal_data=None, target_signal="470", reference_signal="410", 
                           baseline_period=(0, 60), apply_baseline=False):
-    """Calculate and plot ΔF/F"""
+    """Calculate and plot ΔF/F - supports combined wavelengths"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -333,59 +348,68 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
         
         dff_data_dict = {}
         
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        
         for channel_num in active_channels:
             if channel_num in channel_data:
-                target_col = channel_data[channel_num].get(target_signal)
-                if not target_col or target_col not in preprocessed_data.columns:
-                    continue
-                
-                smoothed_col = f"CH{channel_num}_{target_signal}_smoothed"
-                if smoothed_col in preprocessed_data.columns:
-                    raw_col = smoothed_col
-                else:
-                    raw_col = target_col
-                
-                raw_target = preprocessed_data[raw_col]
-                
-                if reference_signal == "410" and apply_baseline:
-                    motion_corrected_col = f"CH{channel_num}_motion_corrected"
-                    if motion_corrected_col in preprocessed_data.columns:
-                        dff_data = preprocessed_data[motion_corrected_col] / np.median(raw_target)
+                # Calculate dFF for each wavelength separately
+                for wavelength in target_wavelengths:
+                    target_col = channel_data[channel_num].get(wavelength)
+                    if not target_col or target_col not in preprocessed_data.columns:
+                        continue
+                    
+                    smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                    if smoothed_col in preprocessed_data.columns:
+                        raw_col = smoothed_col
                     else:
-                        log_message("Please apply motion correction first", "ERROR")
-                        return
-                elif reference_signal == "410" and not apply_baseline:
-                    fitted_ref_col = f"CH{channel_num}_fitted_ref"
-                    if fitted_ref_col in preprocessed_data.columns:
-                        denominator = preprocessed_data[fitted_ref_col]
-                        denominator = denominator.replace(0, np.finfo(float).eps)
-                        dff_data = (raw_target - preprocessed_data[fitted_ref_col]) / denominator
-                    else:
-                        log_message("Please apply motion correction first", "ERROR")
-                        return
-                elif reference_signal == "baseline" and apply_baseline:
-                    baseline_pred_col = f"CH{channel_num}_baseline_pred"
-                    if baseline_pred_col in preprocessed_data.columns:
+                        raw_col = target_col
+                    
+                    raw_target = preprocessed_data[raw_col]
+                    
+                    if reference_signal == "410" and apply_baseline:
+                        motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
+                        if motion_corrected_col in preprocessed_data.columns:
+                            dff_data = preprocessed_data[motion_corrected_col] / np.median(raw_target)
+                        else:
+                            log_message("Please apply motion correction first", "ERROR")
+                            return
+                    elif reference_signal == "410" and not apply_baseline:
+                        fitted_ref_col = f"CH{channel_num}_{wavelength}_fitted_ref"
+                        if fitted_ref_col in preprocessed_data.columns:
+                            denominator = preprocessed_data[fitted_ref_col]
+                            denominator = denominator.replace(0, np.finfo(float).eps)
+                            dff_data = (raw_target - preprocessed_data[fitted_ref_col]) / denominator
+                        else:
+                            log_message("Please apply motion correction first", "ERROR")
+                            return
+                    elif reference_signal == "baseline" and apply_baseline:
+                        baseline_pred_col = f"CH{channel_num}_{wavelength}_baseline_pred"
+                        if baseline_pred_col in preprocessed_data.columns:
+                            baseline_median = np.median(raw_target[baseline_mask])
+                            if baseline_median == 0:
+                                baseline_median = np.finfo(float).eps
+                            dff_data = (raw_target - preprocessed_data[baseline_pred_col]) / baseline_median
+                        else:
+                            log_message("Please apply baseline correction first", "ERROR")
+                            return
+                    elif reference_signal == "baseline" and not apply_baseline:
                         baseline_median = np.median(raw_target[baseline_mask])
                         if baseline_median == 0:
                             baseline_median = np.finfo(float).eps
-                        dff_data = (raw_target - preprocessed_data[baseline_pred_col]) / baseline_median
-                    else:
-                        log_message("Please apply baseline correction first", "ERROR")
-                        return
-                elif reference_signal == "baseline" and not apply_baseline:
-                    baseline_median = np.median(raw_target[baseline_mask])
-                    if baseline_median == 0:
-                        baseline_median = np.finfo(float).eps
-                    dff_data = (raw_target - baseline_median) / baseline_median
-                
-                dff_col = f"CH{channel_num}_dff"
-                preprocessed_data[dff_col] = dff_data
-                dff_data_dict[str(channel_num)] = dff_data
+                        dff_data = (raw_target - baseline_median) / baseline_median
+                    
+                    dff_col = f"CH{channel_num}_{wavelength}_dff"
+                    preprocessed_data[dff_col] = dff_data
+                    
+                    # Store with wavelength identifier
+                    key = f"{channel_num}_{wavelength}"
+                    dff_data_dict[key] = dff_data
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
             animal_data['dff_data'] = dff_data_dict
+            animal_data['target_signal'] = target_signal  # Store target signal info
         else:
             globals()['preprocessed_data'] = preprocessed_data
             globals()['dff_data'] = dff_data_dict
@@ -397,7 +421,7 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
 
 def calculate_zscore(animal_data=None, target_signal="470", reference_signal="410", 
                              baseline_period=(0, 60), apply_baseline=False):
-    """Calculate and plot Z-score"""
+    """Calculate and plot Z-score - supports combined wavelengths"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data or animal_data.get('preprocessed_data') is None:
@@ -435,28 +459,36 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
         
         zscore_data_dict = {}
         
-        for channel_num in active_channels:
-            dff_col = f"CH{channel_num}_dff"
-            if dff_col not in preprocessed_data.columns:
-                continue
-            
-            dff_data = preprocessed_data[dff_col]
-            baseline_dff = dff_data[baseline_mask]
-            
-            if len(baseline_dff) < 2:
-                continue
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         
-            mean_dff = np.mean(baseline_dff)
-            std_dff = np.std(baseline_dff)
+        for channel_num in active_channels:
+            # Calculate z-score for each wavelength separately
+            for wavelength in target_wavelengths:
+                dff_col = f"CH{channel_num}_{wavelength}_dff"
+                if dff_col not in preprocessed_data.columns:
+                    continue
+                
+                dff_data = preprocessed_data[dff_col]
+                baseline_dff = dff_data[baseline_mask]
+                
+                if len(baseline_dff) < 2:
+                    continue
             
-            if std_dff == 0:
-                zscore_data = np.zeros_like(dff_data)
-            else:
-                zscore_data = (dff_data - mean_dff) / std_dff
-            
-            zscore_col = f"CH{channel_num}_zscore"
-            preprocessed_data[zscore_col] = zscore_data
-            zscore_data_dict[str(channel_num)] = zscore_data
+                mean_dff = np.mean(baseline_dff)
+                std_dff = np.std(baseline_dff)
+                
+                if std_dff == 0:
+                    zscore_data = np.zeros_like(dff_data)
+                else:
+                    zscore_data = (dff_data - mean_dff) / std_dff
+                
+                zscore_col = f"CH{channel_num}_{wavelength}_zscore"
+                preprocessed_data[zscore_col] = zscore_data
+                
+                # Store with wavelength identifier
+                key = f"{channel_num}_{wavelength}"
+                zscore_data_dict[key] = zscore_data
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data

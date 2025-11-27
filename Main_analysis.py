@@ -1027,6 +1027,7 @@ class FiberVisualizationWindow:
             preprocessed_data = self.animal_data.get('preprocessed_data', {})
             dff_data = self.animal_data.get('dff_data', {})
             zscore_data = self.animal_data.get('zscore_data', {})
+            target_signal = self.animal_data.get('target_signal', self.target_signal)
         else:
             fiber_data = globals().get('fiber_data_trimmed') or globals().get('fiber_data')
             channels = globals().get('channels', {})
@@ -1035,6 +1036,7 @@ class FiberVisualizationWindow:
             preprocessed_data = globals().get('preprocessed_data', {})
             dff_data = globals().get('dff_data', {})
             zscore_data = globals().get('zscore_data', {})
+            target_signal = self.target_signal
         
         if fiber_data is None or not active_channels:
             self.ax.text(0.5, 0.5, "No fiber data available\nPlease load fiber data first", 
@@ -1060,17 +1062,27 @@ class FiberVisualizationWindow:
         
         has_plotted_data = False
 
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+
         if self.plot_type == "raw":
             has_data = False
             for i, channel_num in enumerate(active_channels):
                 if channel_num in channel_data:
-                    for wavelength, col_name in channel_data[channel_num].items():
+                    for wavelength in target_wavelengths:
+                        col_name = channel_data[channel_num].get(wavelength)
                         if col_name and col_name in fiber_data.columns:
                             color = colors[i % len(colors)]
-                            alpha = 1.0 if wavelength == "470" else 0.6
-                            linewidth = 1.5 if wavelength == "470" else 1.0
-                            self.ax.plot(time_data, fiber_data[col_name], color=color, alpha=alpha, 
-                                    linewidth=linewidth, label=f'CH{channel_num} {wavelength}nm')
+                            alpha = 0.8
+                            linewidth = 1.5
+                            label = f'CH{channel_num} {wavelength}nm'
+                            if '+' in target_signal and len(target_wavelengths) > 1:
+                                # For combined wavelengths, use different line styles
+                                linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                                self.ax.plot(time_data, fiber_data[col_name], color=color, alpha=alpha, 
+                                    linewidth=linewidth, linestyle=linestyle, label=label)
+                            else:
+                                self.ax.plot(time_data, fiber_data[col_name], color=color, alpha=alpha, 
+                                    linewidth=linewidth, label=label)
                             all_time_data.extend(time_data)
                             all_value_data.extend(fiber_data[col_name].values)
                             has_data = True
@@ -1080,8 +1092,9 @@ class FiberVisualizationWindow:
                 self.ax.text(0.5, 0.5, "No raw data columns found\nCheck channel configuration", 
                             ha='center', va='center', transform=self.ax.transAxes, fontsize=10)
             
-            self.ax.set_title("Fiber Photometry Data - Raw Signals", fontsize=12, fontweight='bold')
-        
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - Raw Signals{title_suffix}", fontsize=12, fontweight='bold')
+
         elif self.plot_type == "smoothed":
             if self.animal_data:
                 data_source = self.animal_data.get('preprocessed_data', pd.DataFrame())
@@ -1090,23 +1103,25 @@ class FiberVisualizationWindow:
                 
             for i, channel_num in enumerate(active_channels):
                 if channel_num in channel_data:
-                    smoothed_cols = [
-                        f"CH{channel_num}_470_smoothed",
-                        f"CH{channel_num}_560_smoothed",
-                        f"CH{channel_num}_{self.target_signal}_smoothed" if hasattr(self, 'target_signal') else None
-                    ]
-                    
-                    for col in smoothed_cols:
-                        if col and col in data_source.columns:
-                            color = colors[i % len(colors)]
-                            line = self.ax.plot(time_data, data_source[col], color=color,
-                                        label=f'CH{channel_num} Smoothed')[0]
+                    color = colors[i % len(colors)]
+                    for wavelength in target_wavelengths:
+                        smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
+                        if smoothed_col in data_source.columns:
+                            label = f'CH{channel_num} {wavelength}nm Smoothed'
+                            if '+' in target_signal and len(target_wavelengths) > 1:
+                                linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                                line = self.ax.plot(time_data, data_source[smoothed_col], color=color,
+                                            linestyle=linestyle, label=label)[0]
+                            else:
+                                line = self.ax.plot(time_data, data_source[smoothed_col], color=color,
+                                            label=label)[0]
                             all_time_data.extend(time_data)
-                            all_value_data.extend(data_source[col].values)
+                            all_value_data.extend(data_source[smoothed_col].values)
                             has_plotted_data = True
-                            break
-            self.ax.set_title("Fiber Photometry Data - Smoothed")
-        
+            
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - Smoothed{title_suffix}")
+
         elif self.plot_type == "baseline_corrected":
             if self.animal_data:
                 data_source = self.animal_data.get('preprocessed_data', pd.DataFrame())
@@ -1114,16 +1129,25 @@ class FiberVisualizationWindow:
                 data_source = globals().get('preprocessed_data', pd.DataFrame())
                 
             for i, channel_num in enumerate(active_channels):
-                baseline_col = f"CH{channel_num}_baseline_corrected"
-                if baseline_col in data_source.columns:
-                    color = colors[i % len(colors)]
-                    line = self.ax.plot(time_data, data_source[baseline_col], color=color,
-                                label=f'CH{channel_num} Baseline Corrected')[0]
-                    all_time_data.extend(time_data)
-                    all_value_data.extend(data_source[baseline_col].values)
-                    has_plotted_data = True
-            self.ax.set_title("Fiber Photometry Data - Baseline Corrected")
-        
+                color = colors[i % len(colors)]
+                for wavelength in target_wavelengths:
+                    baseline_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
+                    if baseline_col in data_source.columns:
+                        label = f'CH{channel_num} {wavelength}nm Baseline Corrected'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, data_source[baseline_col], color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, data_source[baseline_col], color=color,
+                                        label=label)[0]
+                        all_time_data.extend(time_data)
+                        all_value_data.extend(data_source[baseline_col].values)
+                        has_plotted_data = True
+            
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - Baseline Corrected{title_suffix}")
+
         elif self.plot_type == "motion_corrected":
             if self.animal_data:
                 data_source = self.animal_data.get('preprocessed_data', pd.DataFrame())
@@ -1131,128 +1155,116 @@ class FiberVisualizationWindow:
                 data_source = globals().get('preprocessed_data', pd.DataFrame())
                 
             for i, channel_num in enumerate(active_channels):
-                motion_col = f"CH{channel_num}_motion_corrected"
-                if motion_col in data_source.columns:
-                    color = colors[i % len(colors)]
-                    line = self.ax.plot(time_data, data_source[motion_col], color=color,
-                                label=f'CH{channel_num} Motion Corrected')[0]
-                    all_time_data.extend(time_data)
-                    all_value_data.extend(data_source[motion_col].values)
-                    has_plotted_data = True
-            self.ax.set_title("Fiber Photometry Data - Motion Corrected")
-        
+                color = colors[i % len(colors)]
+                for wavelength in target_wavelengths:
+                    motion_col = f"CH{channel_num}_{wavelength}_motion_corrected"
+                    if motion_col in data_source.columns:
+                        label = f'CH{channel_num} {wavelength}nm Motion Corrected'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, data_source[motion_col], color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, data_source[motion_col], color=color,
+                                        label=label)[0]
+                        all_time_data.extend(time_data)
+                        all_value_data.extend(data_source[motion_col].values)
+                        has_plotted_data = True
+            
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - Motion Corrected{title_suffix}")
+
         elif self.plot_type == "dff":
-            if self.animal_data and 'dff_data' in self.animal_data:
-                dff_data = self.animal_data['dff_data']
-                if hasattr(dff_data, 'empty') and dff_data.empty:
-                    dff_data = {}
-                elif not isinstance(dff_data, (dict, pd.Series)):
-                    dff_data = {}
-            else:
-                dff_data = {}
-                
-            if dff_data is None or (hasattr(dff_data, 'empty') and dff_data.empty) or (isinstance(dff_data, dict) and not dff_data):
-                if self.animal_data and 'preprocessed_data' in self.animal_data:
-                    data_source = self.animal_data['preprocessed_data']
-                else:
-                    data_source = globals().get('preprocessed_data', pd.DataFrame())
+            for i, channel_num in enumerate(active_channels):
+                color = colors[i % len(colors)]
+                for wavelength in target_wavelengths:
+                    key = f"{channel_num}_{wavelength}"
+                    dff_col = f"CH{channel_num}_{wavelength}_dff"
                     
-                for i, channel_num in enumerate(active_channels):
-                    dff_col = f"CH{channel_num}_dff"
-                    if dff_col in data_source.columns:
-                        color = colors[i % len(colors)]
-                        line = self.ax.plot(time_data, data_source[dff_col], color=color,
-                                    label=f'CH{channel_num} ΔF/F')[0]
+                    # Try to get from dff_data dict first
+                    if isinstance(dff_data, dict) and key in dff_data:
+                        data_to_plot = dff_data[key]
+                        if isinstance(data_to_plot, pd.Series):
+                            data_to_plot = data_to_plot.values
+                        
+                        label = f'CH{channel_num} {wavelength}nm ΔF/F'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, data_to_plot, color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, data_to_plot, color=color,
+                                        label=label)[0]
                         all_time_data.extend(time_data)
-                        all_value_data.extend(data_source[dff_col].values)
+                        all_value_data.extend(data_to_plot)
                         has_plotted_data = True
-            else:
-                for i, channel_num in enumerate(active_channels):
-                    if str(channel_num) in dff_data:
-                        color = colors[i % len(colors)]
-                        line = self.ax.plot(time_data, dff_data[str(channel_num)], color=color,
-                                    label=f'CH{channel_num} ΔF/F')[0]
+                    # Otherwise try preprocessed_data
+                    elif preprocessed_data is not None and dff_col in preprocessed_data.columns:
+                        label = f'CH{channel_num} {wavelength}nm ΔF/F'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, preprocessed_data[dff_col], color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, preprocessed_data[dff_col], color=color,
+                                        label=label)[0]
                         all_time_data.extend(time_data)
-                        all_value_data.extend(dff_data[str(channel_num)].values)
-                    else:
-                        dff_col = f"CH{channel_num}_dff"
-                        if self.animal_data and 'preprocessed_data' in self.animal_data and dff_col in self.animal_data['preprocessed_data'].columns:
-                            color = colors[i % len(colors)]
-                            line = self.ax.plot(time_data, self.animal_data['preprocessed_data'][dff_col], color=color,
-                                        label=f'CH{channel_num} ΔF/F')[0]
-                            all_time_data.extend(time_data)
-                            all_value_data.extend(self.animal_data['preprocessed_data'][dff_col].values)
-                            has_plotted_data = True
-                        elif 'preprocessed_data' in globals() and dff_col in globals()['preprocessed_data'].columns:
-                            color = colors[i % len(colors)]
-                            line = self.ax.plot(time_data, globals()['preprocessed_data'][dff_col], color=color,
-                                        label=f'CH{channel_num} ΔF/F')[0]
-                            all_time_data.extend(time_data)
-                            all_value_data.extend(globals()['preprocessed_data'][dff_col].values)
-                            has_plotted_data = True
-            self.ax.set_title("Fiber Photometry Data - ΔF/F")
-        
+                        all_value_data.extend(preprocessed_data[dff_col].values)
+                        has_plotted_data = True
+            
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - ΔF/F{title_suffix}")
+
         elif self.plot_type == "zscore":
-            if self.animal_data and 'zscore_data' in self.animal_data:
-                zscore_data = self.animal_data['zscore_data']
-                if hasattr(zscore_data, 'empty') and zscore_data.empty:
-                    zscore_data = {}
-                elif not isinstance(zscore_data, (dict, pd.Series)):
-                    zscore_data = {}
-            else:
-                zscore_data = {}
-                
-            if zscore_data is None or (hasattr(zscore_data, 'empty') and zscore_data.empty) or (isinstance(zscore_data, dict) and not zscore_data):
-                if self.animal_data and 'preprocessed_data' in self.animal_data:
-                    data_source = self.animal_data['preprocessed_data']
-                else:
-                    data_source = globals().get('preprocessed_data', pd.DataFrame())
+            for i, channel_num in enumerate(active_channels):
+                color = colors[i % len(colors)]
+                for wavelength in target_wavelengths:
+                    key = f"{channel_num}_{wavelength}"
+                    zscore_col = f"CH{channel_num}_{wavelength}_zscore"
                     
-                for i, channel_num in enumerate(active_channels):
-                    zscore_col = f"CH{channel_num}_zscore"
-                    if zscore_col in data_source.columns:
-                        color = colors[i % len(colors)]
-                        line = self.ax.plot(time_data, data_source[zscore_col], color=color,
-                                    label=f'CH{channel_num} Z-Score')[0]
+                    # Try to get from zscore_data dict first
+                    if isinstance(zscore_data, dict) and key in zscore_data:
+                        data_to_plot = zscore_data[key]
+                        if isinstance(data_to_plot, pd.Series):
+                            data_to_plot = data_to_plot.values
+                        
+                        label = f'CH{channel_num} {wavelength}nm Z-Score'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, data_to_plot, color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, data_to_plot, color=color,
+                                        label=label)[0]
                         all_time_data.extend(time_data)
-                        all_value_data.extend(data_source[zscore_col].values)
+                        all_value_data.extend(data_to_plot)
                         has_plotted_data = True
-            else:
-                for i, channel_num in enumerate(active_channels):
-                    if str(channel_num) in zscore_data:
-                        color = colors[i % len(colors)]
-                        line = self.ax.plot(time_data, zscore_data[str(channel_num)], color=color,
-                                    label=f'CH{channel_num} Z-Score')[0]
+                    # Otherwise try preprocessed_data
+                    elif preprocessed_data is not None and zscore_col in preprocessed_data.columns:
+                        label = f'CH{channel_num} {wavelength}nm Z-Score'
+                        if '+' in target_signal and len(target_wavelengths) > 1:
+                            linestyle = ['-', '--', '-.', ':'][target_wavelengths.index(wavelength) % 4]
+                            line = self.ax.plot(time_data, preprocessed_data[zscore_col], color=color,
+                                        linestyle=linestyle, label=label)[0]
+                        else:
+                            line = self.ax.plot(time_data, preprocessed_data[zscore_col], color=color,
+                                        label=label)[0]
                         all_time_data.extend(time_data)
-                        all_value_data.extend(zscore_data[str(channel_num)].values)
+                        all_value_data.extend(preprocessed_data[zscore_col].values)
                         has_plotted_data = True
-                    else:
-                        zscore_col = f"CH{channel_num}_zscore"
-                        if self.animal_data and 'preprocessed_data' in self.animal_data and zscore_col in self.animal_data['preprocessed_data'].columns:
-                            color = colors[i % len(colors)]
-                            line = self.ax.plot(time_data, self.animal_data['preprocessed_data'][zscore_col], color=color,
-                                        label=f'CH{channel_num} Z-Score')[0]
-                            all_time_data.extend(time_data)
-                            all_value_data.extend(self.animal_data['preprocessed_data'][zscore_col].values)
-                            has_plotted_data = True
-                        elif 'preprocessed_data' in globals() and zscore_col in globals()['preprocessed_data'].columns:
-                            color = colors[i % len(colors)]
-                            line = self.ax.plot(time_data, globals()['preprocessed_data'][zscore_col], color=color,
-                                        label=f'CH{channel_num} Z-Score')[0]
-                            all_time_data.extend(time_data)
-                            all_value_data.extend(globals()['preprocessed_data'][zscore_col].values)
-                            has_plotted_data = True
-            self.ax.set_title("Fiber Photometry Data - Z-Score")
-        
+            
+            title_suffix = f" ({target_signal}nm)" if target_signal else ""
+            self.ax.set_title(f"Fiber Photometry Data - Z-Score{title_suffix}")
+
         if self.running_analysis_results and self.current_analysis_type:
             self._plot_running_analysis_markers(time_data)
-        
+
         self.ax.set_xlabel("Time (s)")
         self.ax.set_ylabel("ΔF/F" if self.plot_type == "dff" else "Z-Score" if self.plot_type == "zscore" else "Fluorescence")
         if has_plotted_data:
             self.ax.legend()
         self.ax.grid(False)
-        
+
         if all_time_data and all_value_data:
             min_time = min(all_time_data)
             max_time = max(all_time_data)
@@ -1269,7 +1281,7 @@ class FiberVisualizationWindow:
                 self.ax.set_xlim(self.original_xlim)
                 self.ax.set_ylim(self.original_ylim)
                 self._plot_initialized = True
-        
+
         self.canvas.draw()
 
     def _plot_running_analysis_markers(self, time_data):
@@ -3422,7 +3434,22 @@ def clear_all():
     analysis_manager.last_analysis_type = None
 
 def fiber_preprocessing():
-    global preprocess_frame
+    global preprocess_frame, multi_animal_data
+    
+    # Detect available wavelengths from loaded data
+    available_wavelengths = []
+    if multi_animal_data:
+        for animal_data in multi_animal_data:
+            if 'channel_data' in animal_data:
+                wavelength_combos = detect_wavelengths_and_generate_combinations(animal_data['channel_data'])
+                available_wavelengths.extend(wavelength_combos)
+                break  # Use first animal's wavelengths as reference
+    
+    # Remove duplicates and sort
+    available_wavelengths = sorted(list(set(available_wavelengths)))
+    
+    if not available_wavelengths:
+        available_wavelengths = ["470", "560"]  # Fallback default
     
     prep_window = tk.Toplevel(root)
     prep_window.title("Fiber Data Preprocessing")
@@ -3440,8 +3467,7 @@ def fiber_preprocessing():
     signal_frame.pack(fill=tk.X, padx=5, pady=5)
     
     ttk.Label(signal_frame, text="Target Signal:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-    target_options = ["470", "560"]
-    target_menu = ttk.OptionMenu(signal_frame, target_signal_var, "470", *target_options)
+    target_menu = ttk.OptionMenu(signal_frame, target_signal_var, available_wavelengths[0], *available_wavelengths)
     target_menu.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
     
     ttk.Label(signal_frame, text="Reference Signal:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
@@ -3508,6 +3534,45 @@ def fiber_preprocessing():
     ttk.Button(button_frame, text="Close", 
               command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
 
+def detect_wavelengths_and_generate_combinations(channel_data):
+    """Detect available wavelengths and generate all possible combinations"""
+    # Get all available wavelengths (excluding 410)
+    all_wavelengths = set()
+    for channel_num, wavelengths in channel_data.items():
+        for wl in wavelengths.keys():
+            if wl not in ['410', '415']:  # Exclude reference wavelengths
+                all_wavelengths.add(wl)
+    
+    all_wavelengths = sorted(list(all_wavelengths))
+    
+    if not all_wavelengths:
+        return []
+    
+    # Generate all combinations
+    from itertools import combinations
+    
+    combinations_list = []
+    # Single wavelengths
+    for wl in all_wavelengths:
+        combinations_list.append(wl)
+    
+    # Multiple wavelength combinations
+    for r in range(2, len(all_wavelengths) + 1):
+        for combo in combinations(all_wavelengths, r):
+            combinations_list.append('+'.join(combo))
+    
+    return combinations_list
+
+def get_target_signal_data(animal_data, target_signal):
+    """Get data for target signal (single or combined wavelengths)"""
+    if '+' not in target_signal:
+        # Single wavelength
+        return {'type': 'single', 'wavelengths': [target_signal]}
+    else:
+        # Combined wavelengths
+        wavelengths = target_signal.split('+')
+        return {'type': 'combined', 'wavelengths': wavelengths}
+    
 def update_baseline_ui(*args):
     global baseline_frame, smooth_frame, baseline_corr_frame, motion_frame, button_frame
 

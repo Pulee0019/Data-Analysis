@@ -172,7 +172,7 @@ def h_computeSpeed2(time, data, voltageRange):
     
     return speed2
 
-running_data = r"F:\XZL\XZL_RawData\Fiber\钙信号组\20251106\202511061\1337_1337_2923_2923\filename_AST2_1.ast2"
+running_data = r"D:\Expriment\Data\Acethylcholine\filename_AST2_1.ast2"
 threadmill_diameter = 22  # in cm
 invert_running = True
 header, raw_data = h_AST2_readData(running_data)
