@@ -1050,7 +1050,7 @@ class AcrossdayAnalysis:
                 
                 # Get dff_data organized by wavelength
                 dff_data = animal_data['dff_data']
-                
+
                 for wavelength in target_wavelengths:
                     # Find data for this wavelength
                     wavelength_data = None
@@ -1063,9 +1063,10 @@ class AcrossdayAnalysis:
                                     wavelength_data = data
                                 break
                     
-                    if wavelength_data is None:
-                        continue
-                    
+                    if wavelength_data:
+                        # Average across channels for this wavelength
+                        wavelength_dff_data = np.mean(wavelength_data, axis=0) if len(wavelength_data) > 1 else wavelength_data[0]
+
                     # Calculate z-score episodes for this wavelength
                     time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
                     for onset in general_onsets:
@@ -1075,7 +1076,7 @@ class AcrossdayAnalysis:
                         baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
                         
                         if baseline_end_idx > baseline_start_idx:
-                            baseline_data = wavelength_data[baseline_start_idx:baseline_end_idx]
+                            baseline_data = wavelength_dff_data[baseline_start_idx:baseline_end_idx]
                             mean_dff = np.nanmean(baseline_data)
                             std_dff = np.nanstd(baseline_data)
                             
@@ -1086,7 +1087,7 @@ class AcrossdayAnalysis:
                             end_idx = np.argmin(np.abs(fiber_timestamps - (onset + post_time)))
                             
                             if end_idx > start_idx:
-                                episode_data = wavelength_data[start_idx:end_idx]
+                                episode_data = wavelength_dff_data[start_idx:end_idx]
                                 episode_times = fiber_timestamps[start_idx:end_idx] - onset
                                 
                                 if len(episode_times) > 1:
@@ -1094,19 +1095,19 @@ class AcrossdayAnalysis:
                                     interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
                                     all_fiber_episodes[wavelength].append(interp_data)
                 
-                    # Running episodes
-                    time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                    for onset in general_onsets:
-                        start_idx = np.argmin(np.abs(running_timestamps - (onset - pre_time)))
-                        end_idx = np.argmin(np.abs(running_timestamps - (onset + post_time)))
+                # Running episodes
+                time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
+                for onset in general_onsets:
+                    start_idx = np.argmin(np.abs(running_timestamps - (onset - pre_time)))
+                    end_idx = np.argmin(np.abs(running_timestamps - (onset + post_time)))
+                    
+                    if end_idx > start_idx:
+                        episode_data = running_speed[start_idx:end_idx]
+                        episode_times = running_timestamps[start_idx:end_idx] - onset
                         
-                        if end_idx > start_idx:
-                            episode_data = running_speed[start_idx:end_idx]
-                            episode_times = running_timestamps[start_idx:end_idx] - onset
-                            
-                            if len(episode_times) > 1:
-                                interp_data = np.interp(time_array_running, episode_times, episode_data)
-                                all_running_episodes.append(interp_data)
+                        if len(episode_times) > 1:
+                            interp_data = np.interp(time_array_running, episode_times, episode_data)
+                            all_running_episodes.append(interp_data)
                 
             except Exception as e:
                 log_message(f"Error analyzing {animal_data.get('animal_id')}: {str(e)}", "ERROR")
