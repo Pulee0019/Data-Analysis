@@ -1051,22 +1051,30 @@ class AcrossdayAnalysis:
                 # Get dff_data organized by wavelength
                 dff_data = animal_data['dff_data']
 
+                # Get available channels
+                available_channels = []
+                if 'active_channels' in animal_data and animal_data['active_channels']:
+                    available_channels = [str(ch) for ch in animal_data['active_channels']]
+                else:
+                    available_channels = ["1"]  # Default fallback
+                    
+                # Process dff_data to organize by wavelength
+                wavelength_dff_data = {}
                 for wavelength in target_wavelengths:
-                    # Find data for this wavelength
-                    wavelength_data = None
-                    if isinstance(dff_data, dict):
-                        for key, data in dff_data.items():
-                            if wavelength in key:
-                                if isinstance(data, pd.Series):
-                                    wavelength_data = data.values
-                                else:
-                                    wavelength_data = data
-                                break
+                    wavelength_data = []
+                    for channel in available_channels:
+                        key = f"{channel}_{wavelength}"
+                        if isinstance(dff_data, dict) and key in dff_data:
+                            data = dff_data[key]
+                            if isinstance(data, pd.Series):
+                                data = data.values
+                            wavelength_data.append(data)
                     
                     if wavelength_data:
                         # Average across channels for this wavelength
-                        wavelength_dff_data = np.mean(wavelength_data, axis=0) if len(wavelength_data) > 1 else wavelength_data[0]
-
+                        wavelength_dff_data[wavelength] = np.mean(wavelength_data, axis=0) if len(wavelength_data) > 1 else wavelength_data[0]
+                
+                for wavelength in target_wavelengths:
                     # Calculate z-score episodes for this wavelength
                     time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
                     for onset in general_onsets:
@@ -1076,7 +1084,7 @@ class AcrossdayAnalysis:
                         baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
                         
                         if baseline_end_idx > baseline_start_idx:
-                            baseline_data = wavelength_dff_data[baseline_start_idx:baseline_end_idx]
+                            baseline_data = wavelength_dff_data[wavelength][baseline_start_idx:baseline_end_idx]
                             mean_dff = np.nanmean(baseline_data)
                             std_dff = np.nanstd(baseline_data)
                             
@@ -1087,7 +1095,7 @@ class AcrossdayAnalysis:
                             end_idx = np.argmin(np.abs(fiber_timestamps - (onset + post_time)))
                             
                             if end_idx > start_idx:
-                                episode_data = wavelength_dff_data[start_idx:end_idx]
+                                episode_data = wavelength_dff_data[wavelength][start_idx:end_idx]
                                 episode_times = fiber_timestamps[start_idx:end_idx] - onset
                                 
                                 if len(episode_times) > 1:
