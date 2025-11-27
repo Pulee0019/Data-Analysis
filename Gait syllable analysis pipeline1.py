@@ -188,13 +188,13 @@ fs = 30
 threadmill_diameter = 22  # in cm
 Coefficient = np.pi*threadmill_diameter*12/1024/63  # convert pixel to cm
 
-dlc_result_path = r"D:\Expriment\Data\Acethylcholine\637_day22DLC_resnet101_CINJan4shuffle1_500000.csv"
+dlc_result_path = r"D:\Expriment\Data\Calcium\1687 day05_cam0_20251111_150840DLC_resnet101_gait_analysisNov18shuffle1_500000.csv"
 dlc_result = pd.read_csv(dlc_result_path, header=[0, 1, 2], low_memory=False)
 scorer = dlc_result.columns.levels[0][0]
-foot_front_left2 = 'foot_front_left2'
-foot_front_right2 = 'foot_front_right2'
-foot_hint_left2 = 'foot_hint_left2'
-foot_hint_right2 = 'foot_hint_right2'
+foot_front_left2 = 'left_front_foot'
+foot_front_right2 = 'right_front_foot'
+foot_hint_left2 = 'left_hint_foot'
+foot_hint_right2 = 'right_hint_foot'
 
 ffl_x = dlc_result.loc[:, (scorer, foot_front_left2, 'x')].values.astype(float)*Coefficient
 ffl_y = dlc_result.loc[:, (scorer, foot_front_left2, 'y')].values.astype(float)*Coefficient
@@ -374,7 +374,7 @@ plt.plot(time_series, ffl_x, label='After Interpolation', color='r', alpha=0.7)
 plt.plot(time_series, ffl_x_smoothed, label='After Smoothing', color='b', alpha=0.7)
 plt.plot(time_series, low_pass_ffl_x, label='After Low-pass Filter', color='g', alpha=0.7)
 plt.title("x distance of Left Front Foot Before vs. After Interpolation vs. Smooth")
-plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlim(time_series[-1000], time_series[-1])
 plt.xlabel("Time(s)")
 plt.ylabel("X distance(cm)")
 # plt.legend()
@@ -386,7 +386,7 @@ plt.plot(time_series, ffr_x, label='After Interpolation', color='r', alpha=0.7)
 plt.plot(time_series, ffr_x_smoothed, label='After Smoothing', color='b', alpha=0.7)
 plt.plot(time_series, low_pass_ffr_x, label='After Low-pass Filter', color='g', alpha=0.7)
 plt.title("x distance of Right Front Foot Before vs. After Interpolation vs. Smooth")
-plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlim(time_series[-1000], time_series[-1])
 plt.xlabel("Time(s)")
 plt.ylabel("X distance(cm)")
 # plt.legend()
@@ -398,7 +398,7 @@ plt.plot(time_series, fhl_x, label='After Interpolation', color='r', alpha=0.7)
 plt.plot(time_series, fhl_x_smoothed, label='After Smoothing', color='b', alpha=0.7)
 plt.plot(time_series, low_pass_fhl_x, label='After Low-pass Filter', color='g', alpha=0.7)
 plt.title("x distance of Left Hint Foot Before vs. After Interpolation vs. Smooth")
-plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlim(time_series[-1000], time_series[-1])
 plt.xlabel("Time(s)")
 plt.ylabel("X distance(cm)")
 # plt.legend()
@@ -410,7 +410,7 @@ plt.plot(time_series, fhr_x, label='After Interpolation', color='r', alpha=0.7)
 plt.plot(time_series, fhr_x_smoothed, label='After Smoothing', color='b', alpha=0.7)
 plt.plot(time_series, low_pass_fhr_x, label='After Low-pass Filter', color='g', alpha=0.7)
 plt.title("x distance of Right Hint Foot Before vs. After Interpolation vs. Smooth")
-plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlim(time_series[-1000], time_series[-1])
 plt.xlabel("Time(s)")
 plt.ylabel("X distance(cm)")
 plt.legend()
@@ -464,7 +464,7 @@ plt.plot(np.array(time_series)[peaks_ffl_x_smoothed], ffl_x_smoothed[peaks_ffl_x
 plt.plot(np.array(time_series)[valleys_ffl_x_smoothed], ffl_x_smoothed[valleys_ffl_x_smoothed], "o", color='g')
 plt.plot(np.array(time_series)[peaksffl_x_low_pass], low_pass_ffl_x[peaksffl_x_low_pass]-shift_values, "x", color='r')
 plt.plot(np.array(time_series)[valleysffl_x_low_pass], low_pass_ffl_x[valleysffl_x_low_pass]-shift_values, "o", color='g')
-plt.xlim(time_series[-1000], time_series[-1])
+# plt.xlim(time_series[-1000], time_series[-1])
 plt.title("Detected Peaks and Valleys in Left Front Foot x distance")
 plt.xlabel("Time(s)")
 plt.ylabel("X distance(cm)")
@@ -481,7 +481,7 @@ plt.grid(False)
 # plt.plot(np.array(time_series)[valleys_ffr_x_smoothed], ffr_x_smoothed[valleys_ffr_x_smoothed], "o", label='Valleys', color='g')
 # plt.plot(np.array(time_series)[peaksffr_x_low_pass], low_pass_ffr_x[peaksffr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
 # plt.plot(np.array(time_series)[valleysffr_x_low_pass], low_pass_ffr_x[valleysffr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-# plt.xlim(time_series[-1000], time_series[-1])
+# # plt.xlim(time_series[-1000], time_series[-1])
 # plt.title("Detected Peaks and Valleys in Right Front Foot x distance")
 # plt.xlabel("Time(s)")
 # plt.ylabel("X distance(cm)")
@@ -498,7 +498,7 @@ plt.grid(False)
 # plt.plot(np.array(time_series)[valleys_fhl_x_smoothed], fhl_x_smoothed[valleys_fhl_x_smoothed], "o", label='Valleys', color='g')
 # plt.plot(np.array(time_series)[peaksfhl_x_low_pass], low_pass_fhl_x[peaksfhl_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
 # plt.plot(np.array(time_series)[valleysfhl_x_low_pass], low_pass_fhl_x[valleysfhl_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-# plt.xlim(time_series[-1000], time_series[-1])
+# # plt.xlim(time_series[-1000], time_series[-1])
 # plt.title("Detected Peaks and Valleys in Left Hint Foot x distance")
 # plt.xlabel("Time(s)")
 # plt.ylabel("X distance(cm)")
@@ -515,7 +515,7 @@ plt.grid(False)
 # plt.plot(np.array(time_series)[valleys_fhr_x_smoothed], fhr_x_smoothed[valleys_fhr_x_smoothed], "o", label='Valleys', color='g')
 # plt.plot(np.array(time_series)[peaksfhr_x_low_pass], low_pass_fhr_x[peaksfhr_x_low_pass]-shift_values, "x", label='Peaks (Low-pass)', color='r')
 # plt.plot(np.array(time_series)[valleysfhr_x_low_pass], low_pass_fhr_x[valleysfhr_x_low_pass]-shift_values, "o", label='Valleys (Low-pass)', color='g')
-# plt.xlim(time_series[-1000], time_series[-1])
+# # plt.xlim(time_series[-1000], time_series[-1])
 # plt.title("Detected Peaks and Valleys in Right Hint Foot x distance")
 # plt.xlabel("Time(s)")
 # plt.ylabel("X distance(cm)")

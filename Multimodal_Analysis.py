@@ -199,6 +199,7 @@ class MultimodalAnalysis:
     def _plot_general_onsets_analysis(self, animal_data, pre_time, post_time, selected_channels):
         """Plot GENERAL ONSETS analysis results - supports combined wavelengths"""
         # Get data
+        animal_id = animal_data.get('animal_id', 'Unknown')
         treadmill_behaviors = animal_data['treadmill_behaviors']
         dff_data = animal_data['dff_data']
         ast2_data = animal_data['ast2_data_adjusted']
@@ -249,7 +250,7 @@ class MultimodalAnalysis:
         # Create result window
         result_window = tk.Toplevel(self.root)
         channel_label = "+".join(selected_channels)
-        result_window.title(f"GENERAL ONSETS Analysis - Channels {channel_label} - {target_signal}nm")
+        result_window.title(f"GENERAL ONSETS Analysis - Animal {animal_id} - Channels {channel_label} - {target_signal} nm")
         result_window.state('zoomed')
         result_window.configure(bg='#f8f8f8')
         
