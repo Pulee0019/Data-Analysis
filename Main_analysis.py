@@ -2035,28 +2035,33 @@ def load_fiber_data(file_path=None):
 def show_channel_selection_dialog():
     dialog = tk.Toplevel(root)
     dialog.title("Select Channels")
-    dialog.geometry("290x150")
+    dialog.geometry("450x200")
     dialog.transient(root)
     dialog.grab_set()
     
     main_frame = ttk.Frame(dialog, padding=5)
     main_frame.pack(fill="both", expand=True)
     
-    canvas = tk.Canvas(main_frame)
-    canvas.config(height=50, width=100)
-    scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-    scrollable_frame = ttk.Frame(canvas)
+    content_frame = ttk.Frame(main_frame)
+    content_frame.pack(fill="both", expand=True)
     
-    scrollable_frame.bind(
+    fiber_frame = ttk.LabelFrame(content_frame, text="Fiber Channels", padding=10)
+    fiber_frame.pack(side=tk.LEFT, fill="both", expand=True, padx=(0, 5))
+    
+    fiber_canvas = tk.Canvas(fiber_frame, height=80)
+    fiber_scrollbar = ttk.Scrollbar(fiber_frame, orient="vertical", command=fiber_canvas.yview)
+    fiber_scrollable_frame = ttk.Frame(fiber_canvas)
+    
+    fiber_scrollable_frame.bind(
         "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        lambda e: fiber_canvas.configure(scrollregion=fiber_canvas.bbox("all"))
     )
     
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
+    fiber_canvas.create_window((0, 0), window=fiber_scrollable_frame, anchor="nw")
+    fiber_canvas.configure(yscrollcommand=fiber_scrollbar.set)
     
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
+    fiber_canvas.pack(side="left", fill="both", expand=True)
+    fiber_scrollbar.pack(side="right", fill="y")
     
     global channel_vars
     channel_vars = {}
@@ -2070,7 +2075,7 @@ def show_channel_selection_dialog():
             group = animal_data.get('group', '')
             label = f"{animal_id} ({group})" if group else animal_id
             
-            animal_frame = ttk.LabelFrame(scrollable_frame, text=label)
+            animal_frame = ttk.LabelFrame(fiber_scrollable_frame, text=label)
             animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
             
             channel_vars[animal_id] = {}
@@ -2089,8 +2094,8 @@ def show_channel_selection_dialog():
                 )
                 chk.pack(anchor="w", padx=2, pady=2)
     else:
-        if hasattr('channel_data') and channel_data:
-            animal_frame = ttk.LabelFrame(scrollable_frame, text="Single Animal")
+        if 'channel_data' in globals() and channel_data:
+            animal_frame = ttk.LabelFrame(fiber_scrollable_frame, text="Single Animal")
             animal_frame.pack(fill="x", padx=5, pady=5, ipadx=5, ipady=5)
             
             channel_vars['single'] = {}
@@ -2109,12 +2114,67 @@ def show_channel_selection_dialog():
                 )
                 chk.pack(anchor="w", padx=2, pady=2)
     
-    btn_frame = ttk.Frame(dialog)
+    running_frame = ttk.LabelFrame(content_frame, text="Running Channel", padding=10)
+    running_frame.pack(side=tk.RIGHT, fill="both", padx=(5, 0))
+    
+    available_running_channels = []
+    if multi_animal_data and len(multi_animal_data) > 0:
+        for animal_data in multi_animal_data:
+            if 'ast2_data' in animal_data and animal_data['ast2_data']:
+                header = animal_data['ast2_data']['header']
+                if 'activeChIDs' in header:
+                    available_running_channels = header['activeChIDs']
+                    break
+                else:
+                    if 'files' in animal_data and 'ast2' in animal_data['files']:
+                        try:
+                            header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                            available_running_channels = list(range(len(raw_data)))
+                            break
+                        except:
+                            pass
+    
+    if not available_running_channels:
+        available_running_channels = [0, 1, 2, 3]
+    
+    saved_running_channel = channel_memory.get('running_channel', running_channel)
+    
+    ttk.Label(running_frame, text="Select Running Channel:", 
+             font=("Arial", 9, "bold")).pack(pady=(5, 10))
+    
+    global running_channel_var
+    running_channel_var = tk.IntVar(value=saved_running_channel)
+    
+    for ch in available_running_channels:
+        rb = ttk.Radiobutton(
+            running_frame,
+            text=f"Channel {ch}",
+            variable=running_channel_var,
+            value=ch
+        )
+        rb.pack(anchor="w", padx=5, pady=2)
+    
+    info_label = ttk.Label(
+        running_frame,
+        text="This channel will be used\nfor all animals",
+        font=("Arial", 8),
+        foreground="gray"
+    )
+    info_label.pack(pady=(10, 5))
+    
+    btn_frame = ttk.Frame(main_frame)
     btn_frame.pack(fill="x", pady=10)
     
-    ttk.Button(btn_frame, text="Select All", command=lambda: toggle_all_channels(True)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
-    ttk.Button(btn_frame, text="Deselect All", command=lambda: toggle_all_channels(False)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
-    ttk.Button(btn_frame, text="Confirm", command=lambda: finalize_channel_selection(dialog)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
+    btn_frame.columnconfigure(0, weight=1)
+    btn_frame.columnconfigure(1, weight=1)
+    btn_frame.columnconfigure(2, weight=1)
+    
+    ttk.Button(btn_frame, text="Select All Fiber", 
+              command=lambda: toggle_all_channels(True)).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+    ttk.Button(btn_frame, text="Deselect All Fiber", 
+              command=lambda: toggle_all_channels(False)).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
+    ttk.Button(btn_frame, text="Confirm", 
+              command=lambda: finalize_channel_selection(dialog)).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
 
 def toggle_all_channels(select):
     for animal_vars in channel_vars.values():
@@ -2122,7 +2182,14 @@ def toggle_all_channels(select):
             var.set(select)
 
 def finalize_channel_selection(dialog):
-    global channel_memory
+    global channel_memory, running_channel
+    
+    if 'running_channel_var' in globals() and running_channel_var:
+        new_running_channel = running_channel_var.get()
+        running_channel = new_running_channel
+        channel_memory['running_channel'] = new_running_channel
+        log_message(f"Running channel set to: {new_running_channel}", "INFO")
+    
     if multi_animal_data:
         for animal_data in multi_animal_data:
             animal_id = animal_data['animal_id']
@@ -2134,11 +2201,10 @@ def finalize_channel_selection(dialog):
                         selected_channels.append(channel_num)
                 
                 if not selected_channels:
-                    log_message(f"Please select at least one channel for {animal_id}", "WARNING")
+                    log_message(f"Please select at least one fiber channel for {animal_id}", "WARNING")
                     return
                     
                 animal_data['active_channels'] = selected_channels
-                
                 channel_memory[animal_id] = selected_channels
                 
                 if 'fiber_data' not in animal_data or animal_data['fiber_data'] is None:
@@ -2148,12 +2214,27 @@ def finalize_channel_selection(dialog):
                 if animal_data['active_channels'] is None:
                     animal_data['active_channels'] = []
 
+                if 'files' in animal_data and 'ast2' in animal_data['files']:
+                    try:
+                        header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                        if running_channel < len(raw_data):
+                            speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
+                            ast2_data = {
+                                'header': header,
+                                'data': speed
+                            }
+                            animal_data['ast2_data'] = ast2_data
+                        else:
+                            log_message(f"Running channel {running_channel} out of range for {animal_id}", "ERROR")
+                    except Exception as e:
+                        log_message(f"Failed to reload AST2 data for {animal_id}: {str(e)}", "ERROR")
+
                 alignment_success = align_data(animal_data)
                 if not alignment_success:
                     log_message(f"Failed to align data for {animal_id}", "WARNING")
                     if 'fiber_data' in animal_data:
                         animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
-                
+        
     else:
         selected_channels = []
         for channel_num, var in channel_vars['single'].items():
@@ -2161,27 +2242,40 @@ def finalize_channel_selection(dialog):
                 selected_channels.append(channel_num)
         
         if not selected_channels:
-            log_message("Please select at least one channel", "WARNING")
+            log_message("Please select at least one fiber channel", "WARNING")
             return
         
         global active_channels
         active_channels = selected_channels
-        
         channel_memory['single'] = selected_channels
         
         if active_channels is None:
             active_channels = []
         
+        if 'ast2_data' in globals() or ('files' in globals() and 'ast2' in globals()['files']):
+            try:
+                ast2_file = globals().get('ast2_file')
+                if ast2_file:
+                    header, raw_data = h_AST2_readData(ast2_file)
+                    if running_channel < len(raw_data):
+                        speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
+                        globals()['ast2_data'] = {
+                            'header': header,
+                            'data': speed
+                        }
+            except Exception as e:
+                log_message(f"Failed to reload AST2 data: {str(e)}", "ERROR")
+        
         alignment_success = align_data()
         if not alignment_success:
             log_message("Alignment failed, but continuing with available data", "WARNING")
-            if hasattr(globals(), 'fiber_data'):
+            if 'fiber_data' in globals():
                 globals()['fiber_data_trimmed'] = globals()['fiber_data']
 
     save_channel_memory()
     
     dialog.destroy()
-    log_message("Selected channels for all animals")
+    log_message("Channel selection completed for all animals")
     log_message(f"Processed {len(multi_animal_data)} animals")
     log_message(f"Imported {len(multi_animal_data)} animals")
     
@@ -3651,7 +3745,7 @@ def running_data_preprocess():
     # Create preprocessing dialog
     prep_window = tk.Toplevel(root)
     prep_window.title("Running Data Preprocessing Settings - Batch Mode")
-    prep_window.geometry("500x850")
+    prep_window.geometry("500x800")
     prep_window.transient(root)
     prep_window.grab_set()
     
@@ -3665,7 +3759,7 @@ def running_data_preprocess():
     title_label.pack(pady=(0, 15))
     
     # Animal count info
-    info_text = f"Will apply to {len(animals_with_ast2)} animals with running data\nPreview using: {preview_animal.get('animal_id', 'Animal')}"
+    info_text = f"Will apply to {len(animals_with_ast2)} animals with running data\nPreview using: {preview_animal.get('animal_id', 'Animal')}\nRunning Channel: {running_channel}"
     info_label = ttk.Label(main_frame, text=info_text, 
                           font=("Arial", 9), foreground="gray")
     info_label.pack(pady=(0, 10))
@@ -3673,35 +3767,6 @@ def running_data_preprocess():
     # Basic Settings Frame
     basic_frame = ttk.LabelFrame(main_frame, text="📊 Basic Settings", padding=10)
     basic_frame.pack(fill=tk.X, pady=(0, 10))
-    
-    # Running Channel Selection
-    channel_frame = ttk.Frame(basic_frame)
-    channel_frame.pack(fill=tk.X, pady=5)
-    
-    ttk.Label(channel_frame, text="Running Channel:").pack(side=tk.LEFT)
-    
-    # Get available channels from AST2 header
-    available_channels = []
-    if 'ast2_data' in preview_animal and preview_animal['ast2_data']:
-        header = preview_animal['ast2_data']['header']
-        if 'activeChIDs' in header:
-            available_channels = header['activeChIDs']
-        else:
-            # Fallback: try to determine from data shape
-            if 'files' in preview_animal and 'ast2' in preview_animal['files']:
-                try:
-                    header, raw_data = h_AST2_readData(preview_animal['files']['ast2'])
-                    available_channels = list(range(len(raw_data)))
-                except:
-                    available_channels = [0, 1, 2, 3]  # Default fallback
-    
-    if not available_channels:
-        available_channels = [0, 1, 2, 3]  # Default fallback
-    
-    channel_var = tk.StringVar(value=str(running_channel))
-    channel_combo = ttk.Combobox(channel_frame, textvariable=channel_var, 
-                                values=available_channels, state="readonly", width=10)
-    channel_combo.pack(side=tk.RIGHT, padx=(10, 0))
     
     # Invert Running Checkbox
     invert_var = tk.BooleanVar(value=invert_running)
@@ -3872,16 +3937,10 @@ def running_data_preprocess():
             canvas.draw()
     
     def apply_all_settings():
-        """Apply all settings (channel, invert, diameter, and filters) to ALL animals"""
-        global running_channel, invert_running, threadmill_diameter
+        """Apply all settings (invert, diameter, and filters) to ALL animals"""
+        global invert_running, threadmill_diameter
         
         try:
-            # Apply basic settings
-            new_channel = int(channel_var.get())
-            if new_channel < 0:
-                raise ValueError("Channel must be non-negative")
-            running_channel = new_channel
-            
             invert_running = invert_var.get()
             
             new_diameter = float(diameter_var.get())
@@ -3922,7 +3981,6 @@ def running_data_preprocess():
                         failed += 1
                         continue
                     
-                    # Update AST2 data with new settings
                     header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
                     if running_channel < len(raw_data):
                         speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
@@ -3985,16 +4043,15 @@ def running_data_preprocess():
     button_frame = ttk.Frame(main_frame)
     button_frame.pack(fill=tk.X, pady=10)
     
-    ttk.Button(button_frame, text="🔄 Update Preview", 
+    ttk.Button(button_frame, text="Update Preview", 
               command=update_preview).pack(side=tk.LEFT, padx=5)
     
-    ttk.Button(button_frame, text="✅ Apply to All Animals", 
+    ttk.Button(button_frame, text="Apply to All Animals", 
               command=apply_all_settings).pack(side=tk.LEFT, padx=5)
     
-    ttk.Button(button_frame, text="✖ Cancel", 
+    ttk.Button(button_frame, text="Cancel", 
               command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
     
-    # Initial preview
     update_preview()
 
 def running_data_analysis_wrapper(analysis_type):
