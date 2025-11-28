@@ -3803,7 +3803,7 @@ def running_data_preprocess():
     
     prep_window = tk.Toplevel(root)
     prep_window.title("Running Data Preprocessing Settings - Batch Mode")
-    prep_window.geometry("500x700")
+    prep_window.geometry("500x800")
     prep_window.transient(root)
     prep_window.grab_set()
     
