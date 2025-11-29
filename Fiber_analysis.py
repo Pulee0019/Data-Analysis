@@ -1,60 +1,8 @@
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import numpy as np
 from scipy.signal import savgol_filter
 from sklearn.linear_model import LinearRegression
-from matplotlib.colors import LinearSegmentedColormap
 from scipy.optimize import curve_fit
 from logger import log_message
-
-def plot_raw_data(animal_data=None):
-    """Plot raw fiber data"""
-    try:
-        if animal_data:
-            fiber_data = animal_data.get('fiber_data_trimmed')
-            channels = animal_data.get('channels', {})
-            active_channels = animal_data.get('active_channels', [])
-            channel_data = animal_data.get('channel_data', {})
-        else:
-            fiber_data = globals().get('fiber_data_trimmed')
-            channels = globals().get('channels', {})
-            active_channels = globals().get('active_channels', [])
-            channel_data = globals().get('channel_data', {})
-        
-        if fiber_data is None or not active_channels:
-            log_message("Please load and crop fiber data and select channels first", "WARNING")
-            return
-        
-        fig = Figure(figsize=(10, 6), dpi=100)
-        ax = fig.add_subplot(111)
-        
-        time_col = channels['time']
-        time_data = fiber_data[time_col]
-        
-        colors = plt.cm.tab10(np.linspace(0, 1, len(active_channels)))
-        for i, channel_num in enumerate(active_channels):
-            if channel_num in channel_data:
-                for wavelength, col_name in channel_data[channel_num].items():
-                    if col_name and col_name in fiber_data.columns:
-                        color = colors[i]
-                        alpha = 1.0 if wavelength == "470" else 0.6
-                        ax.plot(time_data, fiber_data[col_name], color=color, alpha=alpha, 
-                               label=f'CH{channel_num} {wavelength}nm')
-        
-        ax.set_title("Raw Fiber Photometry Data")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Fluorescence")
-        ax.legend()
-        ax.grid(False)
-        
-        plt.show()
-        
-    except Exception as e:
-        log_message(f"Failed to plot raw data: {str(e)}", "ERROR")
 
 def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470"):
     """Apply smoothing to fiber data - supports combined wavelengths"""
@@ -124,23 +72,23 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
     except Exception as e:
         log_message(f"Smoothing failed: {str(e)}", "ERROR")
         return False
-    
-def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470"):
-    """Apply baseline correction to fiber data - supports combined wavelengths"""
+
+def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470", apply_smooth=False):
+    """Apply baseline correction - independent of smoothing"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
-                log_message("Please apply smoothing first", "WARNING")
-                return False
+                animal_data['preprocessed_data'] = animal_data.get('fiber_data_trimmed').copy()
             preprocessed_data = animal_data['preprocessed_data']
+            fiber_data = animal_data.get('fiber_data_trimmed')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
             channel_data = animal_data.get('channel_data', {})
         else:
             if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please apply smoothing first", "WARNING")
-                return False
+                globals()['preprocessed_data'] = globals().get('fiber_data_trimmed').copy()
             preprocessed_data = globals()['preprocessed_data']
+            fiber_data = globals().get('fiber_data_trimmed')
             channels = globals().get('channels', {})
             active_channels = globals().get('active_channels', [])
             channel_data = globals().get('channel_data', {})
@@ -159,11 +107,12 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                 # Process each wavelength separately
                 for wavelength in target_wavelengths:
                     target_col = channel_data[channel_num].get(wavelength)
-                    if not target_col or target_col not in preprocessed_data.columns:
+                    if not target_col or target_col not in fiber_data.columns:
                         continue
                     
+                    # Choose data source based on apply_smooth flag
                     smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
-                    if smoothed_col in preprocessed_data.columns:
+                    if apply_smooth and smoothed_col in preprocessed_data.columns:
                         signal_col = smoothed_col
                     else:
                         signal_col = target_col
@@ -210,22 +159,23 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         log_message(f"Baseline correction failed: {str(e)}", "ERROR")
         return False
 
-def motion_correction(animal_data=None, target_signal="470", reference_signal="410"):
-    """Apply motion correction to fiber data - supports combined wavelengths"""
+def motion_correction(animal_data=None, target_signal="470", reference_signal="410", 
+                     apply_smooth=False, apply_baseline=False):
+    """Apply motion correction - independent of other preprocessing"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
-                log_message("Please apply smoothing first", "WARNING")
-                return False
+                animal_data['preprocessed_data'] = animal_data.get('fiber_data_trimmed').copy()
             preprocessed_data = animal_data['preprocessed_data']
+            fiber_data = animal_data.get('fiber_data_trimmed')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
             channel_data = animal_data.get('channel_data', {})
         else:
             if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please apply smoothing first", "WARNING")
-                return False
+                globals()['preprocessed_data'] = globals().get('fiber_data_trimmed').copy()
             preprocessed_data = globals()['preprocessed_data']
+            fiber_data = globals().get('fiber_data_trimmed')
             channels = globals().get('channels', {})
             active_channels = globals().get('active_channels', [])
             channel_data = globals().get('channel_data', {})
@@ -243,18 +193,23 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
         for channel_num in active_channels:
             if channel_num in channel_data:
                 ref_col = channel_data[channel_num].get('410')
-                if not ref_col or ref_col not in preprocessed_data.columns:
+                if not ref_col or ref_col not in fiber_data.columns:
                     log_message(f"No 410nm data for channel CH{channel_num}", "INFO")
                     continue
                 
                 # Process each wavelength separately
                 for wavelength in target_wavelengths:
                     target_col = channel_data[channel_num].get(wavelength)
-                    if not target_col or target_col not in preprocessed_data.columns:
+                    if not target_col or target_col not in fiber_data.columns:
                         continue
                     
+                    # Choose data source based on preprocessing history
+                    baseline_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
                     smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
-                    if smoothed_col in preprocessed_data.columns:
+                    
+                    if apply_baseline and baseline_col in preprocessed_data.columns:
+                        signal_col = baseline_col
+                    elif apply_smooth and smoothed_col in preprocessed_data.columns:
                         signal_col = smoothed_col
                     else:
                         signal_col = target_col
@@ -299,11 +254,12 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
                 return False
         
         if apply_baseline:
-            if not baseline_correction(animal_data, baseline_model, target_signal):
+            if not baseline_correction(animal_data, baseline_model, target_signal, apply_smooth):
                 return False
         
         if apply_motion and reference_signal == "410":
-            if not motion_correction(animal_data, target_signal, reference_signal):
+            if not motion_correction(animal_data, target_signal, reference_signal, 
+                                   apply_smooth, apply_baseline):
                 return False
 
         return True
@@ -313,22 +269,23 @@ def apply_preprocessing(animal_data=None, target_signal="470", reference_signal=
         return False
 
 def calculate_dff(animal_data=None, target_signal="470", reference_signal="410", 
-                          baseline_period=(0, 60), apply_baseline=False):
-    """Calculate and plot ΔF/F - supports combined wavelengths"""
+                  baseline_period=(0, 60), apply_baseline=False):
+    """Calculate ΔF/F - can work without preprocessing"""
     try:
         if animal_data:
+            # Check if preprocessed_data exists, if not use fiber_data_trimmed
             if 'preprocessed_data' not in animal_data:
-                log_message("Please preprocess data first", "WARNING")
-                return
+                animal_data['preprocessed_data'] = animal_data.get('fiber_data_trimmed').copy()
             preprocessed_data = animal_data['preprocessed_data']
+            fiber_data = animal_data.get('fiber_data_trimmed')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
             channel_data = animal_data.get('channel_data', {})
         else:
             if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please preprocess data first", "WARNING")
-                return
+                globals()['preprocessed_data'] = globals().get('fiber_data_trimmed').copy()
             preprocessed_data = globals()['preprocessed_data']
+            fiber_data = globals().get('fiber_data_trimmed')
             channels = globals().get('channels', {})
             active_channels = globals().get('active_channels', [])
             channel_data = globals().get('channel_data', {})
@@ -356,9 +313,10 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                 # Calculate dFF for each wavelength separately
                 for wavelength in target_wavelengths:
                     target_col = channel_data[channel_num].get(wavelength)
-                    if not target_col or target_col not in preprocessed_data.columns:
+                    if not target_col or target_col not in fiber_data.columns:
                         continue
                     
+                    # Determine which data to use as raw signal
                     smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
                     if smoothed_col in preprocessed_data.columns:
                         raw_col = smoothed_col
@@ -372,8 +330,11 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                         if motion_corrected_col in preprocessed_data.columns:
                             dff_data = preprocessed_data[motion_corrected_col] / np.median(raw_target)
                         else:
-                            log_message("Please apply motion correction first", "ERROR")
-                            return
+                            log_message("Motion correction data not found, using baseline method", "WARNING")
+                            baseline_median = np.median(raw_target[baseline_mask])
+                            if baseline_median == 0:
+                                baseline_median = np.finfo(float).eps
+                            dff_data = (raw_target - baseline_median) / baseline_median
                     elif reference_signal == "410" and not apply_baseline:
                         fitted_ref_col = f"CH{channel_num}_{wavelength}_fitted_ref"
                         if fitted_ref_col in preprocessed_data.columns:
@@ -381,8 +342,11 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                             denominator = denominator.replace(0, np.finfo(float).eps)
                             dff_data = (raw_target - preprocessed_data[fitted_ref_col]) / denominator
                         else:
-                            log_message("Please apply motion correction first", "ERROR")
-                            return
+                            log_message("Fitted reference not found, using baseline method", "WARNING")
+                            baseline_median = np.median(raw_target[baseline_mask])
+                            if baseline_median == 0:
+                                baseline_median = np.finfo(float).eps
+                            dff_data = (raw_target - baseline_median) / baseline_median
                     elif reference_signal == "baseline" and apply_baseline:
                         baseline_pred_col = f"CH{channel_num}_{wavelength}_baseline_pred"
                         if baseline_pred_col in preprocessed_data.columns:
@@ -391,8 +355,11 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
                                 baseline_median = np.finfo(float).eps
                             dff_data = (raw_target - preprocessed_data[baseline_pred_col]) / baseline_median
                         else:
-                            log_message("Please apply baseline correction first", "ERROR")
-                            return
+                            log_message("Baseline prediction not found, using simple baseline", "WARNING")
+                            baseline_median = np.median(raw_target[baseline_mask])
+                            if baseline_median == 0:
+                                baseline_median = np.finfo(float).eps
+                            dff_data = (raw_target - baseline_median) / baseline_median
                     elif reference_signal == "baseline" and not apply_baseline:
                         baseline_median = np.median(raw_target[baseline_mask])
                         if baseline_median == 0:
@@ -409,10 +376,12 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
             animal_data['dff_data'] = dff_data_dict
-            animal_data['target_signal'] = target_signal  # Store target signal info
+            animal_data['target_signal'] = target_signal
         else:
             globals()['preprocessed_data'] = preprocessed_data
             globals()['dff_data'] = dff_data_dict
+        
+        log_message(f"ΔF/F calculated for {len(dff_data_dict)} signals", "INFO")
         
     except Exception as e:
         log_message(f"ΔF/F calculation failed: {str(e)}", "ERROR")
@@ -420,25 +389,28 @@ def calculate_dff(animal_data=None, target_signal="470", reference_signal="410",
         traceback.print_exc()
 
 def calculate_zscore(animal_data=None, target_signal="470", reference_signal="410", 
-                             baseline_period=(0, 60), apply_baseline=False):
-    """Calculate and plot Z-score - supports combined wavelengths"""
+                     baseline_period=(0, 60), apply_baseline=False):
+    """Calculate Z-score - requires ΔF/F"""
     try:
         if animal_data:
-            if 'preprocessed_data' not in animal_data or animal_data.get('preprocessed_data') is None:
-                log_message("Please calculate ΔF/F first", "WARNING")
-                return None
-            preprocessed_data = animal_data['preprocessed_data']
+            preprocessed_data = animal_data.get('preprocessed_data')
+            dff_data = animal_data.get('dff_data')
             channels = animal_data.get('channels', {})
             active_channels = animal_data.get('active_channels', [])
-            channel_data = animal_data.get('channel_data', {})
-        else:
-            if not hasattr(globals(), 'preprocessed_data') or globals().get('preprocessed_data') is None:
-                log_message("Please calculate ΔF/F first", "WARNING")
+            
+            # Check if dFF has been calculated
+            if not dff_data:
+                log_message("Please calculate ΔF/F first before Z-score", "WARNING")
                 return None
-            preprocessed_data = globals()['preprocessed_data']
+        else:
+            preprocessed_data = globals().get('preprocessed_data')
+            dff_data = globals().get('dff_data')
             channels = globals().get('channels', {})
             active_channels = globals().get('active_channels', [])
-            channel_data = globals().get('channel_data', {})
+            
+            if not dff_data:
+                log_message("Please calculate ΔF/F first before Z-score", "WARNING")
+                return None
         
         if not active_channels:
             log_message("No active channels selected", "WARNING")
@@ -450,7 +422,6 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
             return None
         
         time_data = preprocessed_data[time_col]
-        
         baseline_mask = (time_data >= baseline_period[0]) & (time_data <= baseline_period[1])
         
         if not any(baseline_mask):
@@ -463,14 +434,13 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         
         for channel_num in active_channels:
-            # Calculate z-score for each wavelength separately
             for wavelength in target_wavelengths:
                 dff_col = f"CH{channel_num}_{wavelength}_dff"
                 if dff_col not in preprocessed_data.columns:
                     continue
                 
-                dff_data = preprocessed_data[dff_col]
-                baseline_dff = dff_data[baseline_mask]
+                dff_data_series = preprocessed_data[dff_col]
+                baseline_dff = dff_data_series[baseline_mask]
                 
                 if len(baseline_dff) < 2:
                     continue
@@ -479,9 +449,9 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
                 std_dff = np.std(baseline_dff)
                 
                 if std_dff == 0:
-                    zscore_data = np.zeros_like(dff_data)
+                    zscore_data = np.zeros_like(dff_data_series)
                 else:
-                    zscore_data = (dff_data - mean_dff) / std_dff
+                    zscore_data = (dff_data_series - mean_dff) / std_dff
                 
                 zscore_col = f"CH{channel_num}_{wavelength}_zscore"
                 preprocessed_data[zscore_col] = zscore_data
@@ -497,6 +467,7 @@ def calculate_zscore(animal_data=None, target_signal="470", reference_signal="41
             globals()['preprocessed_data'] = preprocessed_data
             globals()['zscore_data'] = zscore_data_dict
 
+        log_message(f"Z-score calculated for {len(zscore_data_dict)} signals", "INFO")
         return zscore_data_dict
         
     except Exception as e:
