@@ -352,6 +352,7 @@ class MultimodalAnalysis:
             ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
             ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
             
+        ax.set_xlim(-pre_time, post_time)
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Running Speed (cm/s)')
         ax.set_title(title)
@@ -371,6 +372,7 @@ class MultimodalAnalysis:
             ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
             ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
             
+        ax.set_xlim(-time_array[0], time_array[-1])
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Z-score')
         ax.set_title(title)
