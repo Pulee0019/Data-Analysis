@@ -2068,7 +2068,6 @@ def load_fiber_data(file_path=None):
     path = file_path
     try:
         fiber_data = pd.read_csv(path, skiprows=1, delimiter=',', low_memory=False)
-        print(fiber_data)
         fiber_data = fiber_data.loc[:, ~fiber_data.columns.str.contains('^Unnamed')]
         fiber_data.columns = fiber_data.columns.str.strip()
 
