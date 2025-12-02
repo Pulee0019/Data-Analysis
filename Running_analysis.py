@@ -70,10 +70,15 @@ def classify_treadmill_behavior(ast2_data,
             timestamps, smoothed_velocity, continuous_locomotion_velocity_threshold,
             continuous_locomotion_min_duration
         )
+
+        continuous_locomotion_periods_for_termination = detect_continuous_locomotion(
+            timestamps, smoothed_velocity, termination_velocity_threshold,
+            continuous_locomotion_min_duration
+        )
         
         # Detect locomotion terminations
         locomotion_terminations = detect_locomotion_terminations(
-            timestamps, smoothed_velocity, continuous_locomotion_periods,
+            timestamps, smoothed_velocity, continuous_locomotion_periods_for_termination,
             termination_velocity_threshold, termination_duration
         )
         
@@ -83,7 +88,7 @@ def classify_treadmill_behavior(ast2_data,
             'general_onsets': general_onsets,
             'jerks': jerks,
             'locomotion_initiations': locomotion_initiations,
-            'continuous_locomotion_periods': continuous_locomotion_periods,
+            'continuous_locomotion_periods': continuous_locomotion_periods_for_termination,
             'locomotion_terminations': locomotion_terminations,
             'smoothed_velocity': smoothed_velocity,
             'acceleration': acceleration
@@ -239,7 +244,7 @@ def detect_locomotion_terminations(timestamps, velocity, locomotion_periods,
         
         # Check if velocity drops below threshold and stays below
         if end_idx + termination_samples < len(velocity):
-            post_termination_vel = velocity[end_idx:end_idx+termination_samples]
+            post_termination_vel = velocity[end_idx+1:end_idx+termination_samples+1]
             if np.all(post_termination_vel < velocity_threshold):
                 terminations.append(end_time)
     
@@ -488,5 +493,5 @@ def preprocess_running_data(ast2_data, filter_settings):
         return processed_data
         
     except Exception as e:
-        print(f"Error in running data preprocessing: {str(e)}")
+        log_message(f"Error in running data preprocessing: {str(e)}", "ERROR")
         return None

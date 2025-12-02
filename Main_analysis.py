@@ -1729,11 +1729,27 @@ class RunningVisualizationWindow:
         
         color = colors.get(analysis_type, 'black')
         
-        if analysis_type in ['movement_periods', 'rest_periods', 'continuous_locomotion_periods']:
+        if analysis_type in ['movement_periods', 'rest_periods']:
             # Plot periods as shaded regions
             for i, (start, end) in enumerate(data):
                 self.ax.axvspan(start, end, alpha=alpha_values['periods'], color=color,
                               label=analysis_type.replace('_', ' ').title() if i == 0 else "")
+                
+        elif analysis_type == "continuous_locomotion_periods":
+            # Plot periods as shaded regions
+            for i, (start, end) in enumerate(data):
+                self.ax.axvspan(start, end, alpha=alpha_values['periods'], color=color,
+                              label="Continuous Locomotion" if i == 0 else "")
+            self.ax.axhline(y=4.5, color='#000000', linestyle='--', alpha=0.5, label="continuous locomotion velocity threshold")
+
+        elif analysis_type == 'general_onsets':
+            # Plot events as vertical lines
+            for i, event_time in enumerate(data):
+                self.ax.axvline(x=event_time, color=color, linestyle='--', alpha=alpha_values['events'],
+                              label=analysis_type.replace('_', ' ').title() if i == 0 else "")
+            self.ax.axhline(y=0.2, color='#000000', linestyle='--', alpha=0.5, label="onset threshold")
+            self.ax.axhline(y=1.0, color="#353333", linestyle='--', alpha=0.5, label="peak threshold")
+
         else:
             # Plot events as vertical lines
             for i, event_time in enumerate(data):
@@ -4162,8 +4178,10 @@ def running_data_analysis_wrapper(analysis_type):
                         }
                     }
                     treadmill_behaviors = classify_treadmill_behavior(processed_ast2_data)
+                    log_message(f"Used filtered data for {animal_id}", "INFO")
                 else:
                     treadmill_behaviors = classify_treadmill_behavior(ast2_data)
+                    log_message(f"Used raw data for {animal_id}", "WARNING")
                 
                 # Store results in animal_data
                 animal_data['treadmill_behaviors'] = treadmill_behaviors
