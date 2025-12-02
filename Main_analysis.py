@@ -1840,8 +1840,8 @@ def import_multi_animals():
 
                 files_found = {}
                 patterns = {
-                    'dlc': ['*dlc*.csv', '*deeplabcut*.csv'],
-                    'fiber': ['fluorescence.csv', '*fiber*.csv'],
+                    'dlc': ['*dlc*.csv'],
+                    'fiber': ['fluorescence.csv'],
                     'ast2': ['*.ast2']
                 }
 
@@ -1959,8 +1959,8 @@ def import_single_animal():
         animal_id = f"{batch_name}-{ear_tag}"
 
         patterns = {
-            'dlc': ['*dlc*.csv', '*deeplabcut*.csv'],
-            'fiber': ['fluorescence.csv', '*fiber*.csv'],
+            'dlc': ['*dlc*.csv'],
+            'fiber': ['fluorescence.csv'],
             'ast2': ['*.ast2']
         }
 
@@ -2068,6 +2068,7 @@ def load_fiber_data(file_path=None):
     path = file_path
     try:
         fiber_data = pd.read_csv(path, skiprows=1, delimiter=',', low_memory=False)
+        print(fiber_data)
         fiber_data = fiber_data.loc[:, ~fiber_data.columns.str.contains('^Unnamed')]
         fiber_data.columns = fiber_data.columns.str.strip()
 
@@ -4676,7 +4677,7 @@ def update_ui_for_mode():
         behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="disabled")
         
         # Update multimodal menu
-        multimodal_menu.entryconfig("LOCOMOTION Tratejory Analysis", state="disabled")
+        multimodal_menu.entryconfig("Running Event-Trajectory Analysis", state="disabled")
         
     else:  # FIBER_AST2_DLC mode
         # Enable all menu items
@@ -4685,7 +4686,7 @@ def update_ui_for_mode():
         behaviour_analysis_menu.entryconfig("X Displacement Analysis", state="normal")
         behaviour_analysis_menu.entryconfig("Trajectory Point Cloud", state="normal")
         
-        multimodal_menu.entryconfig("LOCOMOTION Tratejory Analysis", state="normal")
+        multimodal_menu.entryconfig("Running Event-Trajectory Analysis", state="normal")
     
     # Clear left panel if in Fiber+AST2 mode
     if current_experiment_mode == EXPERIMENT_MODE_FIBER_AST2:
