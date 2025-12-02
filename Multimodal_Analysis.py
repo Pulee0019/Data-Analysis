@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -25,8 +25,11 @@ class MultimodalAnalysis:
             return self.multi_animal_data[self.current_animal_index]
         return None
     
-    def general_onsets_analysis(self):
-        """Analyze GENERAL ONSETS events"""
+    def running_event_activity_analysis(self, event_type):
+        """
+        Analyze specific running events (General Onsets, Jerks, etc.)
+        event_type: string key in treadmill_behaviors (e.g., 'general_onsets', 'jerks', 'locomotion_initiations')
+        """
         animal_data = self.get_current_animal_data()
         if not animal_data:
             log_message("No animal data available", "ERROR")
@@ -39,16 +42,19 @@ class MultimodalAnalysis:
             log_message(f"Missing necessary data: {', '.join(missing_data)}", "ERROR")
             return
         
+        # Format event name for display
+        event_name_display = event_type.replace('_', ' ').title()
+        
         # Create parameter setting window with UI styling
         param_window = tk.Toplevel(self.root)
-        param_window.title("GENERAL ONSETS Analysis Parameters")
+        param_window.title(f"{event_name_display} Analysis Parameters")
         param_window.geometry("400x400")
         param_window.configure(bg='#f8f8f8')
         param_window.transient(self.root)
         param_window.grab_set()
         
         # Title
-        title_label = tk.Label(param_window, text="GENERAL ONSETS Analysis Settings", 
+        title_label = tk.Label(param_window, text=f"{event_name_display} Analysis Settings", 
                               font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8", fg="#2c3e50")
         title_label.pack(pady=15)
         
@@ -121,7 +127,7 @@ class MultimodalAnalysis:
                     return
                     
                 param_window.destroy()
-                self._plot_general_onsets_analysis(animal_data, pre_time, post_time, selected_channels)
+                self._plot_event_activity_analysis(animal_data, pre_time, post_time, selected_channels, event_type)
                 
             except ValueError:
                 log_message("Please enter valid time values", "WARNING")
@@ -141,8 +147,8 @@ class MultimodalAnalysis:
                               relief=tk.FLAT, padx=15, pady=5)
         cancel_btn.pack(side=tk.LEFT, padx=10)
     
-    def _calculate_zscore_around_onsets(self, onsets, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
-        """Calculate z-score around onsets - supports combined wavelengths"""
+    def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
+        """Calculate z-score around events - supports combined wavelengths"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_zscore_episodes = {}
         
@@ -153,9 +159,9 @@ class MultimodalAnalysis:
         for wavelength in target_wavelengths:
             all_zscore_episodes[wavelength] = []
         
-        for onset in onsets:
-            baseline_start = onset - pre_time
-            baseline_end = onset
+        for event_time in events:
+            baseline_start = event_time - pre_time
+            baseline_end = event_time
             
             baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
             baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
@@ -182,12 +188,12 @@ class MultimodalAnalysis:
                     if std_dff == 0:
                         std_dff = 1e-10
                     
-                    start_idx = np.argmin(np.abs(fiber_timestamps - (onset - pre_time)))
-                    end_idx = np.argmin(np.abs(fiber_timestamps - (onset + post_time)))
+                    start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                    end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
                     
                     if end_idx > start_idx:
                         episode_data = wavelength_data[start_idx:end_idx]
-                        episode_times = fiber_timestamps[start_idx:end_idx] - onset
+                        episode_times = fiber_timestamps[start_idx:end_idx] - event_time
                         
                         if len(episode_times) > 1:
                             zscore_episode = (episode_data - mean_dff) / std_dff
@@ -196,8 +202,8 @@ class MultimodalAnalysis:
         
         return time_array, all_zscore_episodes
     
-    def _plot_general_onsets_analysis(self, animal_data, pre_time, post_time, selected_channels):
-        """Plot GENERAL ONSETS analysis results - supports combined wavelengths"""
+    def _plot_event_activity_analysis(self, animal_data, pre_time, post_time, selected_channels, event_type):
+        """Plot analysis results for the selected event type - supports combined wavelengths"""
         # Get data
         animal_id = animal_data.get('animal_id', 'Unknown')
         treadmill_behaviors = animal_data['treadmill_behaviors']
@@ -205,11 +211,13 @@ class MultimodalAnalysis:
         ast2_data = animal_data['ast2_data_adjusted']
         target_signal = animal_data.get('target_signal', '470')
         
-        general_onsets = treadmill_behaviors.get('general_onsets', [])
+        events = treadmill_behaviors.get(event_type, [])
         running_timestamps = ast2_data['data']['timestamps']
         processed_data = animal_data.get('running_processed_data')
         running_speed = processed_data['filtered_speed'] if processed_data else ast2_data['data']['speed']
         
+        event_name_display = event_type.replace('_', ' ').title()
+
         # Get fiber timestamps
         preprocessed_data = animal_data['preprocessed_data']
         channels = animal_data.get('channels', {})
@@ -239,18 +247,18 @@ class MultimodalAnalysis:
             log_message("No valid dFF data found", "ERROR")
             return
         
-        if len(general_onsets) == 0:
-            log_message("No GENERAL ONSETS events found", "INFO")
+        if len(events) == 0:
+            log_message(f"No {event_name_display} events found", "INFO")
             return
         
         # Calculate z-score episodes for each wavelength
-        time_array, zscore_episodes_dict = self._calculate_zscore_around_onsets(
-            general_onsets, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
+        time_array, zscore_episodes_dict = self._calculate_zscore_around_events(
+            events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
         
         # Create result window
         result_window = tk.Toplevel(self.root)
         channel_label = "+".join(selected_channels)
-        result_window.title(f"GENERAL ONSETS Analysis - Animal {animal_id} - Channels {channel_label} - {target_signal} nm")
+        result_window.title(f"{event_name_display} Analysis - Animal {animal_id} - Channels {channel_label} - {target_signal} nm")
         result_window.state('zoomed')
         result_window.configure(bg='#f8f8f8')
         
@@ -266,8 +274,8 @@ class MultimodalAnalysis:
         # === Row 1: Traces (running + fiber z-score traces) ===
         # 1. Running trace
         ax1 = fig.add_subplot(2, num_cols, plot_idx)
-        self._plot_running_around_onsets(ax1, general_onsets, running_timestamps, running_speed,
-                                        pre_time, post_time, "Running Speed Around GENERAL ONSETS")
+        self._plot_running_around_events(ax1, events, running_timestamps, running_speed,
+                                        pre_time, post_time, f"Running Speed Around {event_name_display}")
         plot_idx += 1
 
         # 2-N. Fiber z-score traces for each wavelength
@@ -276,7 +284,7 @@ class MultimodalAnalysis:
             color = fiber_colors[wl_idx % len(fiber_colors)]
             ax_trace = fig.add_subplot(2, num_cols, plot_idx)
             zscore_episodes = zscore_episodes_dict.get(wavelength, [])
-            self._plot_fiber_zscore_around_onsets(
+            self._plot_fiber_zscore_around_events(
                 ax_trace, time_array, zscore_episodes,
                 f"Fiber Z-score {wavelength}nm - CH{channel_label}",
                 color=color
@@ -286,7 +294,7 @@ class MultimodalAnalysis:
         # === Row 2: Heatmaps (running + fiber z-score heatmaps) ===
         # 1. Running heatmap
         ax2 = fig.add_subplot(2, num_cols, plot_idx)
-        self._plot_running_heatmap(ax2, general_onsets, running_timestamps, running_speed,
+        self._plot_running_heatmap(ax2, events, running_timestamps, running_speed,
                                 pre_time, post_time, "Running Speed Heatmap")
         plot_idx += 1
 
@@ -313,22 +321,22 @@ class MultimodalAnalysis:
         toolbar_frame.pack(fill=tk.X, padx=2, pady=(0,2))
         self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
-        log_message(f"GENERAL ONSETS analysis completed: {len(general_onsets)} events, "
+        log_message(f"{event_name_display} analysis completed: {len(events)} events, "
                 f"channels {channel_label}, wavelengths {target_signal}, time window [-{pre_time},{post_time}]s")
     
-    def _plot_running_around_onsets(self, ax, onsets, timestamps, speed, pre_time, post_time, title):
-        """Plot running speed around onsets (mean±std)"""
+    def _plot_running_around_events(self, ax, events, timestamps, speed, pre_time, post_time, title):
+        """Plot running speed around events (mean±std)"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_episodes = []
         
-        for onset in onsets:
-            start_idx = np.argmin(np.abs(timestamps - (onset - pre_time)))
-            end_idx = np.argmin(np.abs(timestamps - (onset + post_time)))
+        for event in events:
+            start_idx = np.argmin(np.abs(timestamps - (event - pre_time)))
+            end_idx = np.argmin(np.abs(timestamps - (event + post_time)))
             
             if end_idx > start_idx:
                 episode_data = speed[start_idx:end_idx]
                 # Interpolate to standard time axis
-                episode_times = timestamps[start_idx:end_idx] - onset
+                episode_times = timestamps[start_idx:end_idx] - event
                 if len(episode_times) > 1:
                     interp_data = np.interp(time_array, episode_times, episode_data)
                     all_episodes.append(interp_data)
@@ -341,7 +349,7 @@ class MultimodalAnalysis:
             ax.plot(time_array, mean_response, '#000000', linestyle='-', linewidth=2, label='Mean')
             ax.fill_between(time_array, mean_response - std_response, 
                           mean_response + std_response, color='#000000', alpha=0.3, label='Mean ± STD')
-            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Onset')
+            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
             ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
             
         ax.set_xlabel('Time (s)')
@@ -350,8 +358,8 @@ class MultimodalAnalysis:
         ax.legend()
         ax.grid(False)
     
-    def _plot_fiber_zscore_around_onsets(self, ax, time_array, zscore_episodes, title, color="#008000"):
-        """Plot fiber z-score around onsets (mean±std) - supports custom color"""
+    def _plot_fiber_zscore_around_events(self, ax, time_array, zscore_episodes, title, color="#008000"):
+        """Plot fiber z-score around events (mean±std) - supports custom color"""
         if zscore_episodes:
             all_episodes = np.array(zscore_episodes)
             mean_response = np.nanmean(all_episodes, axis=0)
@@ -360,7 +368,7 @@ class MultimodalAnalysis:
             ax.plot(time_array, mean_response, color, linestyle='-', linewidth=2, label='Mean')
             ax.fill_between(time_array, mean_response - std_response,
                         mean_response + std_response, color=color, alpha=0.3, label='Mean ± STD')
-            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Onset')
+            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
             ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
             
         ax.set_xlabel('Time (s)')
@@ -369,25 +377,25 @@ class MultimodalAnalysis:
         ax.legend()
         ax.grid(False)
     
-    def _plot_running_heatmap(self, ax, onsets, timestamps, speed, pre_time, post_time, title):
+    def _plot_running_heatmap(self, ax, events, timestamps, speed, pre_time, post_time, title):
         """Plot running speed heatmap"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_episodes = []
         
-        for i, onset in enumerate(onsets):
-            start_idx = np.argmin(np.abs(timestamps - (onset - pre_time)))
-            end_idx = np.argmin(np.abs(timestamps - (onset + post_time)))
+        for i, event in enumerate(events):
+            start_idx = np.argmin(np.abs(timestamps - (event - pre_time)))
+            end_idx = np.argmin(np.abs(timestamps - (event + post_time)))
             
             if end_idx > start_idx:
                 episode_data = speed[start_idx:end_idx]
-                episode_times = timestamps[start_idx:end_idx] - onset
+                episode_times = timestamps[start_idx:end_idx] - event
                 if len(episode_times) > 1:
                     interp_data = np.interp(time_array, episode_times, episode_data)
                     all_episodes.append(interp_data)
         
         if all_episodes:
             all_episodes = np.array(all_episodes)
-            im = ax.imshow(all_episodes, aspect='auto', extent=[-pre_time, post_time, len(onsets), 1], 
+            im = ax.imshow(all_episodes, aspect='auto', extent=[-pre_time, post_time, len(events), 1], 
                          cmap='viridis', origin='lower')
             ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax.set_xlabel('Time (s)')
@@ -411,8 +419,11 @@ class MultimodalAnalysis:
             ax.set_title(title)
             plt.colorbar(im, ax=ax, label='Z-score', orientation='horizontal')
     
-    def continuous_locomotion_analysis(self):
-        """Analyze trajectories during CONTINUOUS LOCOMOTION PERIODS"""
+    def running_event_trajectory_analysis(self, period_type):
+        """
+        Analyze trajectories during specific running periods
+        period_type: string key in treadmill_behaviors (e.g., 'movement_periods', 'rest_periods', 'continuous_locomotion_periods')
+        """
         animal_data = self.get_current_animal_data()
         if not animal_data:
             log_message("No animal data available", "ERROR")
@@ -427,9 +438,11 @@ class MultimodalAnalysis:
             log_message("No DLC data", "ERROR")
             return
         
-        locomotion_periods = animal_data['treadmill_behaviors'].get('continuous_locomotion_periods', [])
-        if len(locomotion_periods) == 0:
-            log_message("No CONTINUOUS LOCOMOTION PERIODS found", "INFO")
+        periods = animal_data['treadmill_behaviors'].get(period_type, [])
+        period_name_display = period_type.replace('_', ' ').title()
+
+        if len(periods) == 0:
+            log_message(f"No {period_name_display} found", "INFO")
             return
         
         # Use bodyparts selected in main UI
@@ -438,16 +451,16 @@ class MultimodalAnalysis:
             return
         
         selected_bodyparts = list(self.selected_bodyparts)
-        self._plot_locomotion_trajectories(animal_data, locomotion_periods, selected_bodyparts)
+        self._plot_period_trajectories(animal_data, periods, selected_bodyparts, period_name_display)
     
-    def _plot_locomotion_trajectories(self, animal_data, locomotion_periods, selected_bodyparts):
-        """Plot trajectory point clouds during locomotion periods - All bodyparts on single plot"""
+    def _plot_period_trajectories(self, animal_data, periods, selected_bodyparts, period_name_display):
+        """Plot trajectory point clouds during specified periods - All bodyparts on single plot"""
         dlc_data = animal_data['dlc_data']
         video_fps = animal_data.get('video_fps', 30)
         
         # Create result window with UI styling
         result_window = tk.Toplevel(self.root)
-        result_window.title("CONTINUOUS LOCOMOTION Trajectory Analysis")
+        result_window.title(f"{period_name_display} Trajectory Analysis")
         result_window.geometry("1200x900")
         result_window.configure(bg='#f8f8f8')
 
@@ -456,7 +469,7 @@ class MultimodalAnalysis:
         ax = fig.add_subplot(111)
         
         # Set graph properties - UI style
-        ax.set_title("Continuous Locomotion Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
+        ax.set_title(f"{period_name_display} Trajectories", fontsize=14, fontweight='bold', color='#2c3e50', pad=20)
         ax.set_xlabel("X Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.set_ylabel("Y Coordinate", fontsize=12, fontweight='bold', color='#2c3e50')
         ax.grid(True, alpha=0.3, linestyle='--', color='#bdc3c7')
@@ -471,11 +484,11 @@ class MultimodalAnalysis:
             # Get color for this bodypart
             color = self.colors[i % len(self.colors)]
             
-            # Collect trajectory points for this bodypart across all locomotion periods
+            # Collect trajectory points for this bodypart across all periods
             bodypart_x = []
             bodypart_y = []
             
-            for j, (start_time, end_time) in enumerate(locomotion_periods):
+            for j, (start_time, end_time) in enumerate(periods):
                 # Convert time to frame indices
                 start_frame = int(start_time * video_fps)
                 end_frame = int(end_time * video_fps)
@@ -546,7 +559,7 @@ class MultimodalAnalysis:
 
         self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
-        log_message(f"Continuous locomotion trajectory analysis completed: {len(locomotion_periods)} periods, {len(selected_bodyparts)} bodyparts")
+        log_message(f"{period_name_display} trajectory analysis completed: {len(periods)} periods, {len(selected_bodyparts)} bodyparts")
 
 class AcrossdayAnalysis:
     def __init__(self, root, multi_animal_data=None):
@@ -559,17 +572,32 @@ class AcrossdayAnalysis:
         self.used_animals = set()  # Track used animal_ids
         self.num_rows = 1
         self.num_cols = 6
+        self.target_event_type = None # Stores the current analysis type
         
         # Colors for different days
         self.day_colors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', 
                           '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
         
-        self.create_analysis_window()
-    
+    def show_config_window(self, event_type):
+        """
+        Show configuration window for specific event type
+        event_type: 'general_onsets', 'jerks', 'locomotion_initiations', 'locomotion_terminations'
+        """
+        self.target_event_type = event_type
+        event_name_display = event_type.replace('_', ' ').title()
+        
+        # Create or focus window
+        if self.analysis_window is None or not self.analysis_window.winfo_exists():
+            self.create_analysis_window()
+        
+        self.analysis_window.title(f"Acrossday Analysis Configuration - {event_name_display}")
+        self.analysis_window.deiconify()
+        self.analysis_window.lift()
+
     def create_analysis_window(self):
         """Create the acrossday analysis configuration window"""
         self.analysis_window = tk.Toplevel(self.root)
-        self.analysis_window.title("Acrossday Analysis Configuration")
+        # Title will be set in show_config_window
         self.analysis_window.geometry("670x400")
         self.analysis_window.transient(self.root)
         
@@ -888,14 +916,20 @@ class AcrossdayAnalysis:
             log_message(f"Cleared cell at row {row}, col {col}")
     
     def run_analysis(self):
-        """Run acrossday analysis"""
+        """Run acrossday analysis based on target_event_type"""
         # Validate table data
         if not self.table_data:
             log_message("No data in the table to analyze", "WARNING")
             return
         
+        if not self.target_event_type:
+             log_message("No analysis type selected. Please reopen via menu.", "ERROR")
+             return
+             
+        event_name_display = self.target_event_type.replace('_', ' ').title()
+        
         param_window = tk.Toplevel(self.analysis_window)
-        param_window.title("Acrossday Analysis Parameters")
+        param_window.title(f"{event_name_display} Analysis Parameters")
         param_window.geometry("300x200")
         param_window.configure(bg='#f8f8f8')
         param_window.transient(self.analysis_window)
@@ -982,13 +1016,14 @@ class AcrossdayAnalysis:
             log_message("No valid data found for any day", "WARNING")
             return
         
-        log_message(f"Starting acrossday analysis for {len(day_data)} days (pre={pre_time}s, post={post_time}s)...")
+        event_name_display = self.target_event_type.replace('_', ' ').title()
+        log_message(f"Starting acrossday {event_name_display} analysis for {len(day_data)} days (pre={pre_time}s, post={post_time}s)...")
         
         # Perform analysis for each day
         results = {}
         for day_name, animals in day_data.items():
             log_message(f"Analyzing {day_name} with {len(animals)} animals...")
-            day_result = self.analyze_day(day_name, animals, pre_time, post_time)
+            day_result = self.analyze_day(day_name, animals, pre_time, post_time, self.target_event_type)
             if day_result:
                 results[day_name] = day_result
         
@@ -999,8 +1034,8 @@ class AcrossdayAnalysis:
         else:
             log_message("Acrossday analysis failed, no valid results", "ERROR")
 
-    def analyze_day(self, day_name, animals, pre_time, post_time):
-        """Analyze data for one day - supports combined wavelengths"""
+    def analyze_day(self, day_name, animals, pre_time, post_time, event_type):
+        """Analyze data for one day - supports combined wavelengths and dynamic event type"""
         all_running_episodes = []
         all_fiber_episodes = {}  # Organized by wavelength
         
@@ -1031,18 +1066,17 @@ class AcrossdayAnalysis:
                     log_message(f"Skipping {animal_data.get('animal_id')}: missing necessary data", "WARNING")
                     continue
                 
-                # Get general onsets
-                general_onsets = animal_data['treadmill_behaviors'].get('general_onsets', [])
-                if not general_onsets:
-                    log_message(f"No general onsets for {animal_data.get('animal_id')}", "INFO")
+                # Get events based on selected type
+                events = animal_data['treadmill_behaviors'].get(event_type, [])
+                if not events:
+                    log_message(f"No {event_type} events for {animal_data.get('animal_id')}", "INFO")
                     continue
                 
                 # Get data
                 ast2_data = animal_data['ast2_data_adjusted']
                 running_timestamps = ast2_data['data']['timestamps']
                 processed_data = animal_data.get('running_processed_data')
-                running_speed = processed_data['filtered_speed']
-                # running_speed = ast2_data['data']['speed']
+                running_speed = processed_data['filtered_speed'] if processed_data else ast2_data['data']['speed']
                 
                 preprocessed_data = animal_data['preprocessed_data']
                 channels = animal_data.get('channels', {})
@@ -1078,41 +1112,42 @@ class AcrossdayAnalysis:
                 for wavelength in target_wavelengths:
                     # Calculate z-score episodes for this wavelength
                     time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                    for onset in general_onsets:
-                        baseline_start = onset - pre_time
-                        baseline_end = onset
+                    for event_time in events:
+                        baseline_start = event_time - pre_time
+                        baseline_end = event_time
                         baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
                         baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
                         
                         if baseline_end_idx > baseline_start_idx:
-                            baseline_data = wavelength_dff_data[wavelength][baseline_start_idx:baseline_end_idx]
-                            mean_dff = np.nanmean(baseline_data)
-                            std_dff = np.nanstd(baseline_data)
-                            
-                            if std_dff == 0:
-                                std_dff = 1e-10
-                            
-                            start_idx = np.argmin(np.abs(fiber_timestamps - (onset - pre_time)))
-                            end_idx = np.argmin(np.abs(fiber_timestamps - (onset + post_time)))
-                            
-                            if end_idx > start_idx:
-                                episode_data = wavelength_dff_data[wavelength][start_idx:end_idx]
-                                episode_times = fiber_timestamps[start_idx:end_idx] - onset
+                            if wavelength in wavelength_dff_data:
+                                baseline_data = wavelength_dff_data[wavelength][baseline_start_idx:baseline_end_idx]
+                                mean_dff = np.nanmean(baseline_data)
+                                std_dff = np.nanstd(baseline_data)
                                 
-                                if len(episode_times) > 1:
-                                    zscore_episode = (episode_data - mean_dff) / std_dff
-                                    interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
-                                    all_fiber_episodes[wavelength].append(interp_data)
+                                if std_dff == 0:
+                                    std_dff = 1e-10
+                                
+                                start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                                end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+                                
+                                if end_idx > start_idx:
+                                    episode_data = wavelength_dff_data[wavelength][start_idx:end_idx]
+                                    episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                                    
+                                    if len(episode_times) > 1:
+                                        zscore_episode = (episode_data - mean_dff) / std_dff
+                                        interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
+                                        all_fiber_episodes[wavelength].append(interp_data)
                 
                 # Running episodes
                 time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                for onset in general_onsets:
-                    start_idx = np.argmin(np.abs(running_timestamps - (onset - pre_time)))
-                    end_idx = np.argmin(np.abs(running_timestamps - (onset + post_time)))
+                for event_time in events:
+                    start_idx = np.argmin(np.abs(running_timestamps - (event_time - pre_time)))
+                    end_idx = np.argmin(np.abs(running_timestamps - (event_time + post_time)))
                     
                     if end_idx > start_idx:
                         episode_data = running_speed[start_idx:end_idx]
-                        episode_times = running_timestamps[start_idx:end_idx] - onset
+                        episode_times = running_timestamps[start_idx:end_idx] - event_time
                         
                         if len(episode_times) > 1:
                             interp_data = np.interp(time_array_running, episode_times, episode_data)
@@ -1164,10 +1199,12 @@ class AcrossdayAnalysis:
         if not target_wavelengths:
             target_wavelengths = ['470']  # Fallback
         
+        event_name_display = self.target_event_type.replace('_', ' ').title()
+        
         # Create result window
         result_window = tk.Toplevel(self.root)
         wavelength_label = '+'.join(target_wavelengths)
-        result_window.title(f"Acrossday Analysis Results - All Days ({wavelength_label}nm)")
+        result_window.title(f"Acrossday {event_name_display} Results - All Days ({wavelength_label}nm)")
         result_window.state("zoomed")
         result_window.configure(bg="#ffffff")
         

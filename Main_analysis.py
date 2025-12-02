@@ -4841,12 +4841,40 @@ behaviour_analysis_menu.add_command(label="Trajectory Point Cloud", command=crea
 
 multimodal_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Multimodal Analysis", menu=multimodal_menu)
-multimodal_menu.add_command(label="GENERAL ONSETS Fiber Anlysis", 
-                           command=lambda: init_multimodal_analysis().general_onsets_analysis())
-multimodal_menu.add_command(label="LOCOMOTION Tratejory Analysis", 
-                           command=lambda: init_multimodal_analysis().continuous_locomotion_analysis())
-multimodal_menu.add_command(label="Accrossday Analysis",
-                            command=lambda: initial_acrossday_analysis())
+
+# Running Event-Activity Analysis submenu
+event_activity_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Running Event-Activity Analysis", menu=event_activity_menu)
+event_activity_menu.add_command(label="General Onsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('general_onsets'))
+event_activity_menu.add_command(label="Jerks", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('jerks'))
+event_activity_menu.add_command(label="Locomotion Initiations", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_initiations'))
+event_activity_menu.add_command(label="Locomotion Terminations", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_terminations'))
+
+# Running Event-Trajectory Analysis submenu
+event_trajectory_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Running Event-Trajectory Analysis", menu=event_trajectory_menu)
+event_trajectory_menu.add_command(label="Movement Periods", 
+                                 command=lambda: init_multimodal_analysis().running_event_trajectory_analysis('movement_periods'))
+event_trajectory_menu.add_command(label="Rest Periods", 
+                                 command=lambda: init_multimodal_analysis().running_event_trajectory_analysis('rest_periods'))
+event_trajectory_menu.add_command(label="Continuous Locomotion Periods", 
+                                 command=lambda: init_multimodal_analysis().running_event_trajectory_analysis('continuous_locomotion_periods'))
+
+# Acrossday Analysis submenu
+acrossday_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Acrossday Analysis", menu=acrossday_menu)
+acrossday_menu.add_command(label="General Onsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('general_onsets'))
+acrossday_menu.add_command(label="Jerks",
+                          command=lambda: initial_acrossday_analysis().show_config_window('jerks'))
+acrossday_menu.add_command(label="Locomotion Initiations",
+                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_initiations'))
+acrossday_menu.add_command(label="Locomotion Terminations",
+                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_terminations'))
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)
