@@ -4,8 +4,10 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
+import os
 import numpy as np
 import pandas as pd
+from datetime import datetime
 from logger import log_message
 
 class MultimodalAnalysis:
@@ -48,19 +50,19 @@ class MultimodalAnalysis:
         # Create parameter setting window with UI styling
         param_window = tk.Toplevel(self.root)
         param_window.title(f"{event_name_display} Analysis Parameters")
-        param_window.geometry("400x400")
+        param_window.geometry("400x500")
         param_window.configure(bg='#f8f8f8')
         param_window.transient(self.root)
         param_window.grab_set()
         
         # Title
         title_label = tk.Label(param_window, text=f"{event_name_display} Analysis Settings", 
-                              font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8", fg="#2c3e50")
+                            font=("Microsoft YaHei", 12, "bold"), bg="#f8f8f8", fg="#2c3e50")
         title_label.pack(pady=15)
         
         # Time window selection frame
         time_frame = tk.LabelFrame(param_window, text="Time Window Settings", 
-                                  font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+                                font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
         time_frame.pack(fill=tk.X, padx=20, pady=10)
         
         # Pre-time setting
@@ -70,7 +72,7 @@ class MultimodalAnalysis:
                 font=("Microsoft YaHei", 8)).pack(side=tk.LEFT)
         pre_time_var = tk.StringVar(value="30")
         pre_time_entry = tk.Entry(pre_frame, textvariable=pre_time_var, width=10, 
-                                 font=("Microsoft YaHei", 8))
+                                font=("Microsoft YaHei", 8))
         pre_time_entry.pack(side=tk.LEFT, padx=5)
         
         # Post-time setting
@@ -80,12 +82,12 @@ class MultimodalAnalysis:
                 font=("Microsoft YaHei", 8)).pack(side=tk.LEFT)
         post_time_var = tk.StringVar(value="60")
         post_time_entry = tk.Entry(post_frame, textvariable=post_time_var, width=10, 
-                                  font=("Microsoft YaHei", 8))
+                                font=("Microsoft YaHei", 8))
         post_time_entry.pack(side=tk.LEFT, padx=5)
         
         # Channel selection frame
         channel_frame = tk.LabelFrame(param_window, text="Fiber Channel Selection", 
-                                     font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+                                    font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
         channel_frame.pack(fill=tk.X, padx=20, pady=10)
         
         # Get available channels
@@ -109,6 +111,17 @@ class MultimodalAnalysis:
         if available_channels:
             channel_listbox.selection_set(0)
         
+        # Export option
+        export_frame = tk.LabelFrame(param_window, text="Export Options", 
+                                    font=("Microsoft YaHei", 9, "bold"), bg="#f8f8f8")
+        export_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        export_var = tk.BooleanVar(value=False)
+        export_check = tk.Checkbutton(export_frame, text="Export statistic results to CSV", 
+                                    variable=export_var, bg="#f8f8f8",
+                                    font=("Microsoft YaHei", 8))
+        export_check.pack(anchor=tk.W, padx=10, pady=5)
+        
         def run_analysis():
             try:
                 pre_time = float(pre_time_var.get())
@@ -127,7 +140,8 @@ class MultimodalAnalysis:
                     return
                     
                 param_window.destroy()
-                self._plot_event_activity_analysis(animal_data, pre_time, post_time, selected_channels, event_type)
+                self._plot_event_activity_analysis(animal_data, pre_time, post_time, 
+                                                selected_channels, event_type, export_var.get())
                 
             except ValueError:
                 log_message("Please enter valid time values", "WARNING")
@@ -137,14 +151,14 @@ class MultimodalAnalysis:
         button_frame.pack(pady=15)
         
         run_btn = tk.Button(button_frame, text="Start Analysis", command=run_analysis,
-                           bg="#3498db", fg="white", font=("Microsoft YaHei", 9, "bold"),
-                           relief=tk.FLAT, padx=15, pady=5)
+                        bg="#3498db", fg="white", font=("Microsoft YaHei", 9, "bold"),
+                        relief=tk.FLAT, padx=15, pady=5)
         run_btn.pack(side=tk.LEFT, padx=10)
         
         cancel_btn = tk.Button(button_frame, text="Cancel", 
-                              command=param_window.destroy,
-                              bg="#95a5a6", fg="white", font=("Microsoft YaHei", 9),
-                              relief=tk.FLAT, padx=15, pady=5)
+                            command=param_window.destroy,
+                            bg="#95a5a6", fg="white", font=("Microsoft YaHei", 9),
+                            relief=tk.FLAT, padx=15, pady=5)
         cancel_btn.pack(side=tk.LEFT, padx=10)
     
     def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
@@ -202,7 +216,7 @@ class MultimodalAnalysis:
         
         return time_array, all_zscore_episodes
     
-    def _plot_event_activity_analysis(self, animal_data, pre_time, post_time, selected_channels, event_type):
+    def _plot_event_activity_analysis(self, animal_data, pre_time, post_time, selected_channels, event_type, export_statistics=False):
         """Plot analysis results for the selected event type - supports combined wavelengths"""
         # Get data
         animal_id = animal_data.get('animal_id', 'Unknown')
@@ -227,23 +241,19 @@ class MultimodalAnalysis:
         # Parse target signal
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         
-        # Process dff_data to organize by wavelength
-        wavelength_dff_data = {}
-        for wavelength in target_wavelengths:
-            wavelength_data = []
-            for channel in selected_channels:
+        # Process dff_data to organize by wavelength and channel
+        channel_wavelength_dff_data = {}
+        for channel in selected_channels:
+            channel_wavelength_dff_data[channel] = {}
+            for wavelength in target_wavelengths:
                 key = f"{channel}_{wavelength}"
                 if isinstance(dff_data, dict) and key in dff_data:
                     data = dff_data[key]
                     if isinstance(data, pd.Series):
                         data = data.values
-                    wavelength_data.append(data)
-            
-            if wavelength_data:
-                # Average across channels for this wavelength
-                wavelength_dff_data[wavelength] = np.mean(wavelength_data, axis=0) if len(wavelength_data) > 1 else wavelength_data[0]
+                    channel_wavelength_dff_data[channel][wavelength] = data
         
-        if not wavelength_dff_data:
+        if not channel_wavelength_dff_data:
             log_message("No valid dFF data found", "ERROR")
             return
         
@@ -251,9 +261,34 @@ class MultimodalAnalysis:
             log_message(f"No {event_name_display} events found", "INFO")
             return
         
-        # Calculate z-score episodes for each wavelength
-        time_array, zscore_episodes_dict = self._calculate_zscore_around_events(
-            events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
+        # Calculate z-score episodes for each channel and wavelength
+        all_channel_zscore_episodes = {}
+        for channel in selected_channels:
+            wavelength_dff_data = channel_wavelength_dff_data[channel]
+            if not wavelength_dff_data:
+                continue
+                
+            time_array, zscore_episodes_dict = self._calculate_zscore_around_events(
+                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
+            all_channel_zscore_episodes[channel] = zscore_episodes_dict
+        
+        # Export statistics if requested
+        if export_statistics:
+            self._export_event_statistics(animal_id, event_type, pre_time, post_time,
+                                        selected_channels, target_wavelengths,
+                                        events, running_timestamps, running_speed,
+                                        all_channel_zscore_episodes, time_array)
+        
+        # Calculate average across channels for plotting
+        avg_zscore_episodes_dict = {}
+        for wavelength in target_wavelengths:
+            all_episodes = []
+            for channel in selected_channels:
+                if channel in all_channel_zscore_episodes and wavelength in all_channel_zscore_episodes[channel]:
+                    all_episodes.extend(all_channel_zscore_episodes[channel][wavelength])
+            
+            if all_episodes:
+                avg_zscore_episodes_dict[wavelength] = all_episodes
         
         # Create result window
         result_window = tk.Toplevel(self.root)
@@ -283,7 +318,7 @@ class MultimodalAnalysis:
         for wl_idx, wavelength in enumerate(target_wavelengths):
             color = fiber_colors[wl_idx % len(fiber_colors)]
             ax_trace = fig.add_subplot(2, num_cols, plot_idx)
-            zscore_episodes = zscore_episodes_dict.get(wavelength, [])
+            zscore_episodes = avg_zscore_episodes_dict.get(wavelength, [])
             self._plot_fiber_zscore_around_events(
                 ax_trace, time_array, zscore_episodes,
                 f"Fiber Z-score {wavelength}nm - CH{channel_label}",
@@ -302,7 +337,7 @@ class MultimodalAnalysis:
         for wl_idx, wavelength in enumerate(target_wavelengths):
             ax_heatmap = fig.add_subplot(2, num_cols, plot_idx)
             self._plot_fiber_zscore_heatmap(
-                ax_heatmap, zscore_episodes_dict.get(wavelength, []), time_array,
+                ax_heatmap, avg_zscore_episodes_dict.get(wavelength, []), time_array,
                 f"Fiber Z-score Heatmap {wavelength}nm - CH{channel_label}"
             )
             plot_idx += 1
@@ -324,6 +359,126 @@ class MultimodalAnalysis:
         log_message(f"{event_name_display} analysis completed: {len(events)} events, "
                 f"channels {channel_label}, wavelengths {target_signal}, time window [-{pre_time},{post_time}]s")
     
+    def _export_event_statistics(self, animal_id, event_type, pre_time, post_time,
+                           selected_channels, target_wavelengths,
+                           events, running_timestamps, running_speed,
+                           all_channel_zscore_episodes, time_array):
+        """Export statistical results for event analysis"""
+        # Prepare data for CSV
+        rows = []
+        
+        # Process running data (not channel specific)
+        for trial_idx, event_time in enumerate(events):
+            # Find indices for time windows
+            pre_mask = (time_array >= -pre_time) & (time_array <= 0)
+            post_mask = (time_array >= 0) & (time_array <= post_time)
+            
+            # Get running speed for this event
+            start_idx = np.argmin(np.abs(running_timestamps - (event_time - pre_time)))
+            end_idx = np.argmin(np.abs(running_timestamps - (event_time + post_time)))
+            
+            if end_idx > start_idx:
+                episode_data = running_speed[start_idx:end_idx]
+                episode_times = running_timestamps[start_idx:end_idx] - event_time
+                
+                if len(episode_times) > 1:
+                    interp_data = np.interp(time_array, episode_times, episode_data)
+                    
+                    # Calculate statistics for pre-window
+                    pre_data = interp_data[pre_mask]
+                    pre_min = np.min(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_max = np.max(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_mean = np.mean(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_area = np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan
+                    
+                    # Calculate statistics for post-window
+                    post_data = interp_data[post_mask]
+                    post_min = np.min(post_data) if len(post_data) > 0 else np.nan
+                    post_max = np.max(post_data) if len(post_data) > 0 else np.nan
+                    post_mean = np.mean(post_data) if len(post_data) > 0 else np.nan
+                    post_area = np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan
+                    
+                    rows.append({
+                        'animal_id': animal_id,
+                        'event_type': event_type,
+                        'channel': 'N/A',
+                        'wavelength': 'N/A',
+                        'trial': trial_idx + 1,
+                        'pre_min': pre_min,
+                        'pre_max': pre_max,
+                        'pre_mean': pre_mean,
+                        'pre_area': pre_area,
+                        'post_min': post_min,
+                        'post_max': post_max,
+                        'post_mean': post_mean,
+                        'post_area': post_area,
+                        'signal_type': 'running_speed'
+                    })
+        
+        # Process fiber data for each channel and wavelength
+        for channel in selected_channels:
+            if channel not in all_channel_zscore_episodes:
+                continue
+                
+            for wavelength in target_wavelengths:
+                if wavelength not in all_channel_zscore_episodes[channel]:
+                    continue
+                    
+                zscore_episodes = all_channel_zscore_episodes[channel][wavelength]
+                
+                for trial_idx, zscore_data in enumerate(zscore_episodes):
+                    if trial_idx >= len(events):
+                        break
+                        
+                    # Calculate statistics for pre-window
+                    pre_mask = (time_array >= -pre_time) & (time_array <= 0)
+                    pre_data = zscore_data[pre_mask]
+                    pre_min = np.min(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_max = np.max(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_mean = np.mean(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_area = np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan
+                    
+                    # Calculate statistics for post-window
+                    post_mask = (time_array >= 0) & (time_array <= post_time)
+                    post_data = zscore_data[post_mask]
+                    post_min = np.min(post_data) if len(post_data) > 0 else np.nan
+                    post_max = np.max(post_data) if len(post_data) > 0 else np.nan
+                    post_mean = np.mean(post_data) if len(post_data) > 0 else np.nan
+                    post_area = np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan
+                    
+                    rows.append({
+                        'animal_id': animal_id,
+                        'event_type': event_type,
+                        'channel': channel,
+                        'wavelength': wavelength,
+                        'trial': trial_idx + 1,
+                        'pre_min': pre_min,
+                        'pre_max': pre_max,
+                        'pre_mean': pre_mean,
+                        'pre_area': pre_area,
+                        'post_min': post_min,
+                        'post_max': post_max,
+                        'post_mean': post_mean,
+                        'post_area': post_area,
+                        'signal_type': 'fiber_zscore'
+                    })
+        
+        # Create DataFrame and save to CSV
+        if rows:
+            df = pd.DataFrame(rows)
+
+            save_dir = filedialog.askdirectory(title='Please select directory to save statistics CSV')
+            
+            # Save to CSV
+            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{event_type}_statistics_{timestamp}.csv"
+            save_path = os.path.join(save_dir, filename)
+            df.to_csv(save_path, index=False)
+            
+            log_message(f"Statistics exported to {save_path} ({len(df)} rows)")
+        else:
+            log_message("No data to export", "WARNING")
+            
     def _plot_running_around_events(self, ax, events, timestamps, speed, pre_time, post_time, title):
         """Plot running speed around events (mean±std)"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
@@ -925,14 +1080,14 @@ class AcrossdayAnalysis:
             return
         
         if not self.target_event_type:
-             log_message("No analysis type selected. Please reopen via menu.", "ERROR")
-             return
-             
+            log_message("No analysis type selected. Please reopen via menu.", "ERROR")
+            return
+            
         event_name_display = self.target_event_type.replace('_', ' ').title()
         
         param_window = tk.Toplevel(self.analysis_window)
         param_window.title(f"{event_name_display} Analysis Parameters")
-        param_window.geometry("300x200")
+        param_window.geometry("300x250")
         param_window.configure(bg='#f8f8f8')
         param_window.transient(self.analysis_window)
         param_window.grab_set()
@@ -962,6 +1117,15 @@ class AcrossdayAnalysis:
                                 font=("Microsoft YaHei", 9))
         post_time_entry.pack(side=tk.LEFT, padx=5)
         
+        # Export option
+        export_frame = tk.Frame(param_window, bg="#f8f8f8")
+        export_frame.pack(pady=10)
+        export_var = tk.BooleanVar(value=False)
+        export_check = tk.Checkbutton(export_frame, text="Export statistic results to CSV", 
+                                    variable=export_var, bg="#f8f8f8",
+                                    font=("Microsoft YaHei", 9))
+        export_check.pack()
+        
         def start_with_params():
             try:
                 pre_time = float(pre_time_var.get())
@@ -972,7 +1136,7 @@ class AcrossdayAnalysis:
                     return
                     
                 param_window.destroy()
-                self._run_analysis_with_params(pre_time, post_time)
+                self._run_analysis_with_params(pre_time, post_time, export_var.get())
                 
             except ValueError:
                 log_message("Please enter valid time values", "WARNING")
@@ -992,9 +1156,10 @@ class AcrossdayAnalysis:
                             relief=tk.FLAT, padx=15, pady=5)
         cancel_btn.pack(side=tk.LEFT, padx=10)
 
-    def _run_analysis_with_params(self, pre_time, post_time):
+    def _run_analysis_with_params(self, pre_time, post_time, export_statistics=False):
         self.pre_time = pre_time
         self.post_time = post_time
+        self.export_statistics = export_statistics
         
         # Group animals by day
         day_data = {}
@@ -1023,11 +1188,20 @@ class AcrossdayAnalysis:
         
         # Perform analysis for each day
         results = {}
+        all_statistics_rows = []  # Collect all statistics for export
+        
         for day_name, animals in day_data.items():
             log_message(f"Analyzing {day_name} with {len(animals)} animals...")
-            day_result = self.analyze_day(day_name, animals, pre_time, post_time, self.target_event_type)
+            day_result, day_stats = self.analyze_day(day_name, animals, pre_time, post_time, 
+                                                self.target_event_type, export_statistics)
             if day_result:
                 results[day_name] = day_result
+            if day_stats:
+                all_statistics_rows.extend(day_stats)
+        
+        # Export statistics if requested
+        if export_statistics and all_statistics_rows:
+            self._export_acrossday_statistics(all_statistics_rows)
         
         if results:
             self.results = results
@@ -1036,10 +1210,11 @@ class AcrossdayAnalysis:
         else:
             log_message("Acrossday analysis failed, no valid results", "ERROR")
 
-    def analyze_day(self, day_name, animals, pre_time, post_time, event_type):
+    def analyze_day(self, day_name, animals, pre_time, post_time, event_type, collect_statistics=False):
         """Analyze data for one day - supports combined wavelengths and dynamic event type"""
         all_running_episodes = []
         all_fiber_episodes = {}  # Organized by wavelength
+        statistics_rows = []  # For collecting statistics
         
         # Detect wavelengths from first animal
         target_signal = None
@@ -1059,19 +1234,21 @@ class AcrossdayAnalysis:
         
         for animal_data in animals:
             try:
+                animal_id = animal_data.get('animal_id', 'Unknown')
+                
                 # Check required data
                 if 'treadmill_behaviors' not in animal_data:
-                    log_message(f"Skipping {animal_data.get('animal_id')}: no running behavior data", "WARNING")
+                    log_message(f"Skipping {animal_id}: no running behavior data", "WARNING")
                     continue
                 
                 if 'dff_data' not in animal_data or 'ast2_data_adjusted' not in animal_data:
-                    log_message(f"Skipping {animal_data.get('animal_id')}: missing necessary data", "WARNING")
+                    log_message(f"Skipping {animal_id}: missing necessary data", "WARNING")
                     continue
                 
                 # Get events based on selected type
                 events = animal_data['treadmill_behaviors'].get(event_type, [])
                 if not events:
-                    log_message(f"No {event_type} events for {animal_data.get('animal_id')}", "INFO")
+                    log_message(f"No {event_type} events for {animal_id}", "INFO")
                     continue
                 
                 # Get data
@@ -1095,55 +1272,13 @@ class AcrossdayAnalysis:
                 else:
                     available_channels = ["1"]  # Default fallback
                     
-                # Process dff_data to organize by wavelength
-                wavelength_dff_data = {}
-                for wavelength in target_wavelengths:
-                    wavelength_data = []
-                    for channel in available_channels:
-                        key = f"{channel}_{wavelength}"
-                        if isinstance(dff_data, dict) and key in dff_data:
-                            data = dff_data[key]
-                            if isinstance(data, pd.Series):
-                                data = data.values
-                            wavelength_data.append(data)
-                    
-                    if wavelength_data:
-                        # Average across channels for this wavelength
-                        wavelength_dff_data[wavelength] = np.mean(wavelength_data, axis=0) if len(wavelength_data) > 1 else wavelength_data[0]
-                
-                for wavelength in target_wavelengths:
-                    # Calculate z-score episodes for this wavelength
-                    time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                    for event_time in events:
-                        baseline_start = event_time - pre_time
-                        baseline_end = event_time
-                        baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
-                        baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
-                        
-                        if baseline_end_idx > baseline_start_idx:
-                            if wavelength in wavelength_dff_data:
-                                baseline_data = wavelength_dff_data[wavelength][baseline_start_idx:baseline_end_idx]
-                                mean_dff = np.nanmean(baseline_data)
-                                std_dff = np.nanstd(baseline_data)
-                                
-                                if std_dff == 0:
-                                    std_dff = 1e-10
-                                
-                                start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
-                                end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
-                                
-                                if end_idx > start_idx:
-                                    episode_data = wavelength_dff_data[wavelength][start_idx:end_idx]
-                                    episode_times = fiber_timestamps[start_idx:end_idx] - event_time
-                                    
-                                    if len(episode_times) > 1:
-                                        zscore_episode = (episode_data - mean_dff) / std_dff
-                                        interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
-                                        all_fiber_episodes[wavelength].append(interp_data)
-                
-                # Running episodes
+                # Create time arrays
+                time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
                 time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                for event_time in events:
+                
+                # Process running data for each event
+                for trial_idx, event_time in enumerate(events):
+                    # Running data
                     start_idx = np.argmin(np.abs(running_timestamps - (event_time - pre_time)))
                     end_idx = np.argmin(np.abs(running_timestamps - (event_time + post_time)))
                     
@@ -1154,14 +1289,106 @@ class AcrossdayAnalysis:
                         if len(episode_times) > 1:
                             interp_data = np.interp(time_array_running, episode_times, episode_data)
                             all_running_episodes.append(interp_data)
+                            
+                            # Collect statistics if requested
+                            if collect_statistics:
+                                pre_mask = (time_array_running >= -pre_time) & (time_array_running <= 0)
+                                post_mask = (time_array_running >= 0) & (time_array_running <= post_time)
+                                
+                                pre_data = interp_data[pre_mask]
+                                post_data = interp_data[post_mask]
+                                
+                                statistics_rows.append({
+                                    'day': day_name,
+                                    'animal_id': animal_id,
+                                    'event_type': event_type,
+                                    'channel': 'N/A',
+                                    'wavelength': 'N/A',
+                                    'trial': trial_idx + 1,
+                                    'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                                    'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                                    'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                                    'pre_area': np.trapz(pre_data, time_array_running[pre_mask]) if len(pre_data) > 0 else np.nan,
+                                    'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                                    'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                                    'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                                    'post_area': np.trapz(post_data, time_array_running[post_mask]) if len(post_data) > 0 else np.nan,
+                                    'signal_type': 'running_speed'
+                                })
+                
+                # Process fiber data for each channel and wavelength
+                for channel in available_channels:
+                    for wavelength in target_wavelengths:
+                        key = f"{channel}_{wavelength}"
+                        if isinstance(dff_data, dict) and key in dff_data:
+                            data = dff_data[key]
+                            if isinstance(data, pd.Series):
+                                data = data.values
+                            
+                            channel_wavelength_episodes = []
+                            
+                            for trial_idx, event_time in enumerate(events):
+                                baseline_start = event_time - pre_time
+                                baseline_end = event_time
+                                baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
+                                baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
+                                
+                                if baseline_end_idx > baseline_start_idx:
+                                    baseline_data = data[baseline_start_idx:baseline_end_idx]
+                                    mean_dff = np.nanmean(baseline_data)
+                                    std_dff = np.nanstd(baseline_data)
+                                    
+                                    if std_dff == 0:
+                                        std_dff = 1e-10
+                                    
+                                    start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                                    end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+                                    
+                                    if end_idx > start_idx:
+                                        episode_data = data[start_idx:end_idx]
+                                        episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                                        
+                                        if len(episode_times) > 1:
+                                            zscore_episode = (episode_data - mean_dff) / std_dff
+                                            interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
+                                            channel_wavelength_episodes.append(interp_data)
+                                            
+                                            # Collect statistics if requested
+                                            if collect_statistics:
+                                                pre_mask = (time_array_fiber >= -pre_time) & (time_array_fiber <= 0)
+                                                post_mask = (time_array_fiber >= 0) & (time_array_fiber <= post_time)
+                                                
+                                                pre_data = interp_data[pre_mask]
+                                                post_data = interp_data[post_mask]
+                                                
+                                                statistics_rows.append({
+                                                    'day': day_name,
+                                                    'animal_id': animal_id,
+                                                    'event_type': event_type,
+                                                    'channel': channel,
+                                                    'wavelength': wavelength,
+                                                    'trial': trial_idx + 1,
+                                                    'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
+                                                    'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
+                                                    'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
+                                                    'pre_area': np.trapz(pre_data, time_array_fiber[pre_mask]) if len(pre_data) > 0 else np.nan,
+                                                    'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
+                                                    'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
+                                                    'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
+                                                    'post_area': np.trapz(post_data, time_array_fiber[post_mask]) if len(post_data) > 0 else np.nan,
+                                                    'signal_type': 'fiber_zscore'
+                                                })
+                            
+                            if channel_wavelength_episodes:
+                                all_fiber_episodes[wavelength].extend(channel_wavelength_episodes)
                 
             except Exception as e:
-                log_message(f"Error analyzing {animal_data.get('animal_id')}: {str(e)}", "ERROR")
+                log_message(f"Error analyzing {animal_data.get('animal_id', 'Unknown')}: {str(e)}", "ERROR")
                 continue
         
         if not all_running_episodes:
             log_message(f"No valid episodes for {day_name}", "WARNING")
-            return None
+            return None, statistics_rows if collect_statistics else None
         
         # Calculate mean and SEM for running
         running_episodes = np.array(all_running_episodes)
@@ -1178,7 +1405,7 @@ class AcrossdayAnalysis:
                     'episodes': episodes_array
                 }
         
-        return {
+        result = {
             'running': {
                 'time': time_array_running,
                 'mean': np.nanmean(running_episodes, axis=0),
@@ -1188,7 +1415,28 @@ class AcrossdayAnalysis:
             'fiber': fiber_results,  # Now organized by wavelength
             'target_wavelengths': target_wavelengths
         }
+        
+        return result, statistics_rows if collect_statistics else None
 
+    def _export_acrossday_statistics(self, statistics_rows):
+        """Export acrossday statistics to CSV"""
+        if not statistics_rows:
+            log_message("No statistics data to export", "WARNING")
+            return
+        
+        # Create DataFrame
+        df = pd.DataFrame(statistics_rows)
+        
+        save_dir = filedialog.askdirectory(title='Please select directory to save statistics CSV')
+        
+        # Save to CSV
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"acrossday_{self.target_event_type}_statistics_{timestamp}.csv"
+        save_path = os.path.join(save_dir, filename)
+        df.to_csv(save_path, index=False)
+        
+        log_message(f"Acrossday statistics exported to {save_path} ({len(df)} rows)")
+        
     def plot_results(self, results):
         """Plot analysis results - All days in one window - supports multiple wavelengths"""
         # Get target wavelengths from first result
