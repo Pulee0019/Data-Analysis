@@ -161,16 +161,96 @@ class MultimodalAnalysis:
                             relief=tk.FLAT, padx=15, pady=5)
         cancel_btn.pack(side=tk.LEFT, padx=10)
     
-    def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal, event_type='onset'):
+    def _calculate_dff_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
         """
-        Calculate z-score around events - supports combined wavelengths
+        Extract dFF data around events without calculating baseline
         
         Parameters:
         -----------
+        events : list
+            List of event timestamps
+        fiber_timestamps : array
+            Fiber photometry timestamps
+        dff_data : dict
+            Dictionary of dFF data organized by wavelength
+        pre_time : float
+            Time before event (seconds)
+        post_time : float
+            Time after event (seconds)
+        target_signal : str
+            Target signal wavelength(s)
+        
+        Returns:
+        --------
+        tuple: (time_array, dff_episodes_dict)
+        """
+        time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
+        all_dff_episodes = {}
+        
+        # Parse target signal
+        target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        
+        # Initialize storage for each wavelength
+        for wavelength in target_wavelengths:
+            all_dff_episodes[wavelength] = []
+        
+        for event_time in events:
+            start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+            end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
+            
+            if end_idx > start_idx:
+                for wavelength in target_wavelengths:
+                    # Get data for this specific wavelength
+                    if isinstance(dff_data, dict):
+                        wavelength_data = None
+                        for key, data in dff_data.items():
+                            if wavelength in key:
+                                wavelength_data = data.values if isinstance(data, pd.Series) else data
+                                break
+                        if wavelength_data is None:
+                            continue
+                    else:
+                        wavelength_data = dff_data
+                    
+                    episode_data = wavelength_data[start_idx:end_idx]
+                    episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                    
+                    if len(episode_times) > 1:
+                        # Interpolate to standard time array
+                        interp_data = np.interp(time_array, episode_times, episode_data)
+                        all_dff_episodes[wavelength].append(interp_data)
+        
+        return time_array, all_dff_episodes
+
+    def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, 
+                                    target_signal, event_type='onset', baseline_window=0.5):
+        """
+        Calculate z-score around events with fixed baseline window
+        
+        Parameters:
+        -----------
+        events : list
+            List of event timestamps
+        fiber_timestamps : array
+            Fiber photometry timestamps
+        dff_data : dict
+            Dictionary of dFF data organized by wavelength
+        pre_time : float
+            Time before event for plotting (does not affect baseline)
+        post_time : float
+            Time after event for plotting (does not affect baseline)
+        target_signal : str
+            Target signal wavelength(s)
         event_type : str
             Type of event: 'onset' or 'offset'
-            - 'onset': uses pre_time window as baseline (before event)
-            - 'offset': uses post_time window as baseline (after event)
+            - 'onset': uses fixed pre-event window as baseline
+            - 'offset': uses fixed post-event window as baseline
+        baseline_window : float
+            Fixed baseline window duration in seconds
+        
+        Returns:
+        --------
+        tuple: (time_array, zscore_episodes_dict)
         """
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_zscore_episodes = {}
@@ -183,14 +263,14 @@ class MultimodalAnalysis:
             all_zscore_episodes[wavelength] = []
         
         for event_time in events:
-            # Determine baseline window based on event type
+            # Determine baseline window based on event type (FIXED WINDOW)
             if event_type == 'offset':
-                # For offsets: use post-event window as baseline
+                # For offsets: use fixed post-event window as baseline
                 baseline_start = event_time
-                baseline_end = event_time + post_time
+                baseline_end = event_time + baseline_window
             else:
-                # For onsets (default): use pre-event window as baseline
-                baseline_start = event_time - pre_time
+                # For onsets: use fixed pre-event window as baseline
+                baseline_start = event_time - baseline_window
                 baseline_end = event_time
             
             baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
@@ -200,7 +280,6 @@ class MultimodalAnalysis:
                 for wavelength in target_wavelengths:
                     # Get data for this specific wavelength
                     if isinstance(dff_data, dict):
-                        # Find matching key
                         wavelength_data = None
                         for key, data in dff_data.items():
                             if wavelength in key:
@@ -211,6 +290,7 @@ class MultimodalAnalysis:
                     else:
                         wavelength_data = dff_data
                     
+                    # Calculate baseline statistics from FIXED window
                     baseline_data = wavelength_data[baseline_start_idx:baseline_end_idx]
                     mean_dff = np.nanmean(baseline_data)
                     std_dff = np.nanstd(baseline_data)
@@ -218,6 +298,7 @@ class MultimodalAnalysis:
                     if std_dff == 0:
                         std_dff = 1e-10
                     
+                    # Extract data for plotting window (pre_time to post_time)
                     start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
                     end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
                     
@@ -226,6 +307,7 @@ class MultimodalAnalysis:
                         episode_times = fiber_timestamps[start_idx:end_idx] - event_time
                         
                         if len(episode_times) > 1:
+                            # Calculate z-score using fixed baseline
                             zscore_episode = (episode_data - mean_dff) / std_dff
                             interp_data = np.interp(time_array, episode_times, zscore_episode)
                             all_zscore_episodes[wavelength].append(interp_data)
@@ -277,10 +359,8 @@ class MultimodalAnalysis:
             log_message(f"No {event_name_display} events found", "INFO")
             return
         
-        # Determine zscore baseline type based on event type
-        # Offset events: use post window as baseline
-        # Onset events: use pre window as baseline
-        zscore_baseline_type = 'offset' if 'offset' in event_type.lower() else 'onset'
+        # Determine zscore baseline type and window based on event type
+        zscore_baseline_type, zscore_baseline_window = self._get_zscore_baseline_params(event_type)
         
         # Calculate z-score episodes for each channel and wavelength
         all_channel_zscore_episodes = {}
@@ -290,26 +370,48 @@ class MultimodalAnalysis:
                 continue
                 
             time_array, zscore_episodes_dict = self._calculate_zscore_around_events(
-                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal, zscore_baseline_type)
+                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, 
+                target_signal, zscore_baseline_type, zscore_baseline_window)
             all_channel_zscore_episodes[channel] = zscore_episodes_dict
+        
+        # Calculate dFF episodes for each channel and wavelength (no baseline calculation needed)
+        all_channel_dff_episodes = {}
+        for channel in selected_channels:
+            wavelength_dff_data = channel_wavelength_dff_data[channel]
+            if not wavelength_dff_data:
+                continue
+                
+            time_array_dff, dff_episodes_dict = self._calculate_dff_around_events(
+                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
+            all_channel_dff_episodes[channel] = dff_episodes_dict
         
         # Export statistics if requested
         if export_statistics:
             self._export_event_statistics(animal_id, event_type, pre_time, post_time,
                                         selected_channels, target_wavelengths,
                                         events, running_timestamps, running_speed,
-                                        all_channel_zscore_episodes, time_array)
+                                        all_channel_zscore_episodes, all_channel_dff_episodes, time_array)
         
         # Calculate average across channels for plotting
         avg_zscore_episodes_dict = {}
+        avg_dff_episodes_dict = {}
+        
         for wavelength in target_wavelengths:
-            all_episodes = []
+            # Z-score episodes
+            all_zscore_episodes = []
             for channel in selected_channels:
                 if channel in all_channel_zscore_episodes and wavelength in all_channel_zscore_episodes[channel]:
-                    all_episodes.extend(all_channel_zscore_episodes[channel][wavelength])
+                    all_zscore_episodes.extend(all_channel_zscore_episodes[channel][wavelength])
+            if all_zscore_episodes:
+                avg_zscore_episodes_dict[wavelength] = all_zscore_episodes
             
-            if all_episodes:
-                avg_zscore_episodes_dict[wavelength] = all_episodes
+            # dFF episodes
+            all_dff_episodes = []
+            for channel in selected_channels:
+                if channel in all_channel_dff_episodes and wavelength in all_channel_dff_episodes[channel]:
+                    all_dff_episodes.extend(all_channel_dff_episodes[channel][wavelength])
+            if all_dff_episodes:
+                avg_dff_episodes_dict[wavelength] = all_dff_episodes
         
         # Create result window
         result_window = tk.Toplevel(self.root)
@@ -318,48 +420,75 @@ class MultimodalAnalysis:
         result_window.state('zoomed')
         result_window.configure(bg='#f8f8f8')
         
-        # Determine number of subplot rows needed
+        # Determine number of subplot columns needed
         num_wavelengths = len(target_wavelengths)
-        num_cols = 1 + num_wavelengths  # 1 for running + each wavelength
+        num_cols = 1 + 2 * num_wavelengths  # 1 for running + 2 for each wavelength (dFF + z-score)
 
         # Create matplotlib figure
         fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
 
         plot_idx = 1
 
-        # === Row 1: Traces (running + fiber z-score traces) ===
+        # === Row 1: Traces (running + fiber dFF + fiber z-score traces) ===
         # 1. Running trace
         ax1 = fig.add_subplot(2, num_cols, plot_idx)
         self._plot_running_around_events(ax1, events, running_timestamps, running_speed,
                                         pre_time, post_time, f"Running Speed Around {event_name_display}")
         plot_idx += 1
 
-        # 2-N. Fiber z-score traces for each wavelength
+        # 2-N. Fiber dFF and z-score traces for each wavelength
         fiber_colors = ['#008000', "#FF0000", '#FFA500']
         for wl_idx, wavelength in enumerate(target_wavelengths):
             color = fiber_colors[wl_idx % len(fiber_colors)]
-            ax_trace = fig.add_subplot(2, num_cols, plot_idx)
+            
+            # dFF trace
+            ax_dff_trace = fig.add_subplot(2, num_cols, plot_idx)
+            dff_episodes = avg_dff_episodes_dict.get(wavelength, [])
+            self._plot_fiber_signal_around_events(
+                ax_dff_trace, time_array_dff, dff_episodes,
+                f"Fiber ΔF/F {wavelength}nm - CH{channel_label}",
+                ylabel='ΔF/F',
+                color=color
+            )
+            plot_idx += 1
+            
+            # Z-score trace
+            ax_zscore_trace = fig.add_subplot(2, num_cols, plot_idx)
             zscore_episodes = avg_zscore_episodes_dict.get(wavelength, [])
-            self._plot_fiber_zscore_around_events(
-                ax_trace, time_array, zscore_episodes,
+            self._plot_fiber_signal_around_events(
+                ax_zscore_trace, time_array, zscore_episodes,
                 f"Fiber Z-score {wavelength}nm - CH{channel_label}",
+                ylabel='Z-score',
                 color=color
             )
             plot_idx += 1
 
-        # === Row 2: Heatmaps (running + fiber z-score heatmaps) ===
+        # === Row 2: Heatmaps (running + fiber dFF + fiber z-score heatmaps) ===
         # 1. Running heatmap
         ax2 = fig.add_subplot(2, num_cols, plot_idx)
         self._plot_running_heatmap(ax2, events, running_timestamps, running_speed,
                                 pre_time, post_time, "Running Speed Heatmap")
         plot_idx += 1
 
-        # 2-N. Fiber z-score heatmaps for each wavelength
+        # 2-N. Fiber dFF and z-score heatmaps for each wavelength
         for wl_idx, wavelength in enumerate(target_wavelengths):
-            ax_heatmap = fig.add_subplot(2, num_cols, plot_idx)
-            self._plot_fiber_zscore_heatmap(
-                ax_heatmap, avg_zscore_episodes_dict.get(wavelength, []), time_array,
-                f"Fiber Z-score Heatmap {wavelength}nm - CH{channel_label}"
+            # dFF heatmap
+            ax_dff_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            self._plot_fiber_signal_heatmap(
+                ax_dff_heatmap, avg_dff_episodes_dict.get(wavelength, []), time_array_dff,
+                f"Fiber ΔF/F Heatmap {wavelength}nm - CH{channel_label}",
+                cmap='coolwarm',
+                label='ΔF/F'
+            )
+            plot_idx += 1
+            
+            # Z-score heatmap
+            ax_zscore_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            self._plot_fiber_signal_heatmap(
+                ax_zscore_heatmap, avg_zscore_episodes_dict.get(wavelength, []), time_array,
+                f"Fiber Z-score Heatmap {wavelength}nm - CH{channel_label}",
+                cmap='coolwarm',
+                label='Z-score'
             )
             plot_idx += 1
 
@@ -379,13 +508,36 @@ class MultimodalAnalysis:
         
         log_message(f"{event_name_display} analysis completed: {len(events)} events, "
                 f"channels {channel_label}, wavelengths {target_signal}, time window [-{pre_time},{post_time}]s, "
-                f"baseline type: {zscore_baseline_type}")
+                f"zscore baseline: {zscore_baseline_type} {zscore_baseline_window}s")
     
+    def _get_zscore_baseline_params(self, event_type):
+        """
+        Get z-score baseline parameters based on event type
+        
+        Returns:
+            tuple: (baseline_type, baseline_window)
+                baseline_type: 'onset' or 'offset'
+                baseline_window: float, baseline window duration in seconds
+        """
+        # Onset events use pre-event baseline
+        if event_type in ['general_onsets', 'reset_onsets']:
+            return ('onset', 0.5)
+        elif event_type in ['locomotion_onsets', 'jerks']:
+            return ('onset', 2.0)
+        # Offset events use post-event baseline
+        elif event_type in ['general_offsets', 'reset_offsets']:
+            return ('offset', 0.5)
+        elif event_type in ['locomotion_offsets']:
+            return ('offset', 2.0)
+        else:
+            # Default to onset with 0.5s window
+            return ('onset', 0.5)
+        
     def _export_event_statistics(self, animal_id, event_type, pre_time, post_time,
-                           selected_channels, target_wavelengths,
-                           events, running_timestamps, running_speed,
-                           all_channel_zscore_episodes, time_array):
-        """Export statistical results for event analysis"""
+                       selected_channels, target_wavelengths,
+                       events, running_timestamps, running_speed,
+                       all_channel_zscore_episodes, all_channel_dff_episodes, time_array):
+        """Export statistical results for event analysis - including dFF statistics"""
         # Prepare data for CSV
         rows = []
         
@@ -437,7 +589,55 @@ class MultimodalAnalysis:
                         'signal_type': 'running_speed'
                     })
         
-        # Process fiber data for each channel and wavelength
+        # Process dFF data for each channel and wavelength
+        for channel in selected_channels:
+            if channel not in all_channel_dff_episodes:
+                continue
+                
+            for wavelength in target_wavelengths:
+                if wavelength not in all_channel_dff_episodes[channel]:
+                    continue
+                    
+                dff_episodes = all_channel_dff_episodes[channel][wavelength]
+                
+                for trial_idx, dff_data in enumerate(dff_episodes):
+                    if trial_idx >= len(events):
+                        break
+                        
+                    # Calculate statistics for pre-window
+                    pre_mask = (time_array >= -pre_time) & (time_array <= 0)
+                    pre_data = dff_data[pre_mask]
+                    pre_min = np.min(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_max = np.max(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_mean = np.mean(pre_data) if len(pre_data) > 0 else np.nan
+                    pre_area = np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan
+                    
+                    # Calculate statistics for post-window
+                    post_mask = (time_array >= 0) & (time_array <= post_time)
+                    post_data = dff_data[post_mask]
+                    post_min = np.min(post_data) if len(post_data) > 0 else np.nan
+                    post_max = np.max(post_data) if len(post_data) > 0 else np.nan
+                    post_mean = np.mean(post_data) if len(post_data) > 0 else np.nan
+                    post_area = np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan
+                    
+                    rows.append({
+                        'animal_id': animal_id,
+                        'event_type': event_type,
+                        'channel': channel,
+                        'wavelength': wavelength,
+                        'trial': trial_idx + 1,
+                        'pre_min': pre_min,
+                        'pre_max': pre_max,
+                        'pre_mean': pre_mean,
+                        'pre_area': pre_area,
+                        'post_min': post_min,
+                        'post_max': post_max,
+                        'post_mean': post_mean,
+                        'post_area': post_area,
+                        'signal_type': 'fiber_dff'
+                    })
+        
+        # Process z-score data for each channel and wavelength
         for channel in selected_channels:
             if channel not in all_channel_zscore_episodes:
                 continue
@@ -536,6 +736,43 @@ class MultimodalAnalysis:
         ax.legend()
         ax.grid(False)
     
+    def _plot_fiber_signal_around_events(self, ax, time_array, episodes, title, ylabel='Signal', color="#008000"):
+        """
+        Plot fiber signal around events (mean±std) - generic function for dFF or z-score
+        
+        Parameters:
+        -----------
+        ax : matplotlib axis
+            Axis to plot on
+        time_array : array
+            Time array
+        episodes : list
+            List of episode data arrays
+        title : str
+            Plot title
+        ylabel : str
+            Y-axis label
+        color : str
+            Line color
+        """
+        if episodes:
+            all_episodes = np.array(episodes)
+            mean_response = np.nanmean(all_episodes, axis=0)
+            std_response = np.nanstd(all_episodes, axis=0)
+            
+            ax.plot(time_array, mean_response, color, linestyle='-', linewidth=2, label='Mean')
+            ax.fill_between(time_array, mean_response - std_response,
+                        mean_response + std_response, color=color, alpha=0.3, label='Mean ± STD')
+            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
+            ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
+            
+        ax.set_xlim(time_array[0], time_array[-1])
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.legend()
+        ax.grid(False)
+        
     def _plot_fiber_zscore_around_events(self, ax, time_array, zscore_episodes, title, color="#008000"):
         """Plot fiber z-score around events (mean±std) - supports custom color"""
         if zscore_episodes:
@@ -582,6 +819,45 @@ class MultimodalAnalysis:
             ax.set_title(title)
             plt.colorbar(im, ax=ax, label='Running Speed (cm/s)', orientation='horizontal')
     
+    def _plot_fiber_signal_heatmap(self, ax, episodes, time_array, title, cmap='coolwarm', label='Signal'):
+        """
+        Plot fiber signal heatmap - generic function for dFF or z-score
+        
+        Parameters:
+        -----------
+        ax : matplotlib axis
+            Axis to plot on
+        episodes : list
+            List of episode data arrays
+        time_array : array
+            Time array
+        title : str
+            Plot title
+        cmap : str
+            Colormap name
+        label : str
+            Colorbar label
+        """
+        if episodes:
+            all_episodes = np.array(episodes)
+            im = ax.imshow(all_episodes,
+            aspect='auto',
+            extent=[time_array[0], time_array[-1],
+                    len(episodes), 1],
+            cmap=cmap,
+            origin='lower')
+            ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Trial Number')
+            ax.set_title(title)
+            plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
+        else:
+            ax.text(0.5, 0.5, 'No data available', 
+                ha='center', va='center', transform=ax.transAxes,
+                fontsize=12, color='#666666')
+            ax.set_title(title)
+            ax.axis('off')
+            
     def _plot_fiber_zscore_heatmap(self, ax, zscore_episodes, time_array, title):
         """Plot fiber z-score heatmap using pre-calculated z-score episodes"""
         if zscore_episodes:
@@ -1232,10 +1508,34 @@ class AcrossdayAnalysis:
         else:
             log_message("Acrossday analysis failed, no valid results", "ERROR")
 
+    def _get_zscore_baseline_params(self, event_type):
+        """
+        Get z-score baseline parameters based on event type
+        
+        Returns:
+            tuple: (baseline_type, baseline_window)
+                baseline_type: 'onset' or 'offset'
+                baseline_window: float, baseline window duration in seconds
+        """
+        # Onset events use pre-event baseline
+        if event_type in ['general_onsets', 'reset_onsets']:
+            return ('onset', 0.5)
+        elif event_type in ['locomotion_onsets', 'jerks']:
+            return ('onset', 2.0)
+        # Offset events use post-event baseline
+        elif event_type in ['general_offsets', 'reset_offsets']:
+            return ('offset', 0.5)
+        elif event_type in ['locomotion_offsets']:
+            return ('offset', 2.0)
+        else:
+            # Default to onset with 0.5s window
+            return ('onset', 0.5)
+        
     def analyze_day(self, day_name, animals, pre_time, post_time, event_type, collect_statistics=False):
         """Analyze data for one day - supports combined wavelengths and dynamic event type"""
         all_running_episodes = []
-        all_fiber_episodes = {}  # Organized by wavelength
+        all_dff_episodes = {}  # Organized by wavelength for dFF (no baseline correction)
+        all_zscore_episodes = {}  # Organized by wavelength for z-score (fixed baseline window)
         statistics_rows = []  # For collecting statistics
         
         # Detect wavelengths from first animal
@@ -1252,10 +1552,11 @@ class AcrossdayAnalysis:
         
         # Initialize storage for each wavelength
         for wavelength in target_wavelengths:
-            all_fiber_episodes[wavelength] = []
+            all_dff_episodes[wavelength] = []
+            all_zscore_episodes[wavelength] = []
         
-        # Determine zscore baseline type based on event type
-        zscore_baseline_type = 'offset' if 'offset' in event_type.lower() else 'onset'
+        # Get zscore baseline parameters based on event type
+        zscore_baseline_type, zscore_baseline_window = self._get_zscore_baseline_params(event_type)
         
         for animal_data in animals:
             try:
@@ -1297,9 +1598,8 @@ class AcrossdayAnalysis:
                 else:
                     available_channels = ["1"]  # Default fallback
                     
-                # Create time arrays
-                time_array_fiber = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
-                time_array_running = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
+                # Create time arrays (same for all episodes)
+                time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
                 
                 # Process running data for each event
                 for trial_idx, event_time in enumerate(events):
@@ -1312,13 +1612,13 @@ class AcrossdayAnalysis:
                         episode_times = running_timestamps[start_idx:end_idx] - event_time
                         
                         if len(episode_times) > 1:
-                            interp_data = np.interp(time_array_running, episode_times, episode_data)
+                            interp_data = np.interp(time_array, episode_times, episode_data)
                             all_running_episodes.append(interp_data)
                             
                             # Collect statistics if requested
                             if collect_statistics:
-                                pre_mask = (time_array_running >= -pre_time) & (time_array_running <= 0)
-                                post_mask = (time_array_running >= 0) & (time_array_running <= post_time)
+                                pre_mask = (time_array >= -pre_time) & (time_array <= 0)
+                                post_mask = (time_array >= 0) & (time_array <= post_time)
                                 
                                 pre_data = interp_data[pre_mask]
                                 post_data = interp_data[post_mask]
@@ -1333,11 +1633,11 @@ class AcrossdayAnalysis:
                                     'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
                                     'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
                                     'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
-                                    'pre_area': np.trapz(pre_data, time_array_running[pre_mask]) if len(pre_data) > 0 else np.nan,
+                                    'pre_area': np.trapz(pre_data, time_array[pre_mask]) if len(pre_data) > 0 else np.nan,
                                     'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
                                     'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
                                     'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
-                                    'post_area': np.trapz(post_data, time_array_running[post_mask]) if len(post_data) > 0 else np.nan,
+                                    'post_area': np.trapz(post_data, time_array[post_mask]) if len(post_data) > 0 else np.nan,
                                     'signal_type': 'running_speed'
                                 })
                 
@@ -1350,49 +1650,58 @@ class AcrossdayAnalysis:
                             if isinstance(data, pd.Series):
                                 data = data.values
                             
-                            channel_wavelength_episodes = []
+                            channel_wavelength_dff_episodes = []
+                            channel_wavelength_zscore_episodes = []
                             
                             for trial_idx, event_time in enumerate(events):
-                                # Determine baseline window based on event type
-                                if zscore_baseline_type == 'offset':
-                                    # For offsets: use post-event window as baseline
-                                    baseline_start = event_time
-                                    baseline_end = event_time + post_time
-                                else:
-                                    # For onsets: use pre-event window as baseline
-                                    baseline_start = event_time - pre_time
-                                    baseline_end = event_time
+                                # Extract dFF data (no baseline correction, just windowing)
+                                start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
+                                end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
                                 
-                                baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
-                                baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
-                                
-                                if baseline_end_idx > baseline_start_idx:
-                                    baseline_data = data[baseline_start_idx:baseline_end_idx]
-                                    mean_dff = np.nanmean(baseline_data)
-                                    std_dff = np.nanstd(baseline_data)
+                                if end_idx > start_idx:
+                                    episode_data = data[start_idx:end_idx]
+                                    episode_times = fiber_timestamps[start_idx:end_idx] - event_time
                                     
-                                    if std_dff == 0:
-                                        std_dff = 1e-10
-                                    
-                                    start_idx = np.argmin(np.abs(fiber_timestamps - (event_time - pre_time)))
-                                    end_idx = np.argmin(np.abs(fiber_timestamps - (event_time + post_time)))
-                                    
-                                    if end_idx > start_idx:
-                                        episode_data = data[start_idx:end_idx]
-                                        episode_times = fiber_timestamps[start_idx:end_idx] - event_time
+                                    if len(episode_times) > 1:
+                                        # Interpolate dFF data
+                                        interp_dff = np.interp(time_array, episode_times, episode_data)
+                                        channel_wavelength_dff_episodes.append(interp_dff)
                                         
-                                        if len(episode_times) > 1:
+                                        # Calculate z-score with fixed baseline window
+                                        # Determine baseline window based on event type
+                                        if zscore_baseline_type == 'offset':
+                                            # For offsets: use fixed post-event window as baseline
+                                            baseline_start = event_time
+                                            baseline_end = event_time + zscore_baseline_window
+                                        else:
+                                            # For onsets: use fixed pre-event window as baseline
+                                            baseline_start = event_time - zscore_baseline_window
+                                            baseline_end = event_time
+                                        
+                                        baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
+                                        baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
+                                        
+                                        if baseline_end_idx > baseline_start_idx:
+                                            baseline_data = data[baseline_start_idx:baseline_end_idx]
+                                            mean_dff = np.nanmean(baseline_data)
+                                            std_dff = np.nanstd(baseline_data)
+                                            
+                                            if std_dff == 0:
+                                                std_dff = 1e-10
+                                            
+                                            # Calculate z-score for the entire plotting window
                                             zscore_episode = (episode_data - mean_dff) / std_dff
-                                            interp_data = np.interp(time_array_fiber, episode_times, zscore_episode)
-                                            channel_wavelength_episodes.append(interp_data)
+                                            interp_zscore = np.interp(time_array, episode_times, zscore_episode)
+                                            channel_wavelength_zscore_episodes.append(interp_zscore)
                                             
                                             # Collect statistics if requested
                                             if collect_statistics:
-                                                pre_mask = (time_array_fiber >= -pre_time) & (time_array_fiber <= 0)
-                                                post_mask = (time_array_fiber >= 0) & (time_array_fiber <= post_time)
+                                                pre_mask = (time_array >= -pre_time) & (time_array <= 0)
+                                                post_mask = (time_array >= 0) & (time_array <= post_time)
                                                 
-                                                pre_data = interp_data[pre_mask]
-                                                post_data = interp_data[post_mask]
+                                                # dFF statistics
+                                                pre_dff_data = interp_dff[pre_mask]
+                                                post_dff_data = interp_dff[post_mask]
                                                 
                                                 statistics_rows.append({
                                                     'day': day_name,
@@ -1401,19 +1710,43 @@ class AcrossdayAnalysis:
                                                     'channel': channel,
                                                     'wavelength': wavelength,
                                                     'trial': trial_idx + 1,
-                                                    'pre_min': np.min(pre_data) if len(pre_data) > 0 else np.nan,
-                                                    'pre_max': np.max(pre_data) if len(pre_data) > 0 else np.nan,
-                                                    'pre_mean': np.mean(pre_data) if len(pre_data) > 0 else np.nan,
-                                                    'pre_area': np.trapz(pre_data, time_array_fiber[pre_mask]) if len(pre_data) > 0 else np.nan,
-                                                    'post_min': np.min(post_data) if len(post_data) > 0 else np.nan,
-                                                    'post_max': np.max(post_data) if len(post_data) > 0 else np.nan,
-                                                    'post_mean': np.mean(post_data) if len(post_data) > 0 else np.nan,
-                                                    'post_area': np.trapz(post_data, time_array_fiber[post_mask]) if len(post_data) > 0 else np.nan,
+                                                    'pre_min': np.min(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                                    'pre_max': np.max(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                                    'pre_mean': np.mean(pre_dff_data) if len(pre_dff_data) > 0 else np.nan,
+                                                    'pre_area': np.trapz(pre_dff_data, time_array[pre_mask]) if len(pre_dff_data) > 0 else np.nan,
+                                                    'post_min': np.min(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                                    'post_max': np.max(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                                    'post_mean': np.mean(post_dff_data) if len(post_dff_data) > 0 else np.nan,
+                                                    'post_area': np.trapz(post_dff_data, time_array[post_mask]) if len(post_dff_data) > 0 else np.nan,
+                                                    'signal_type': 'fiber_dff'
+                                                })
+                                                
+                                                # z-score statistics
+                                                pre_zscore_data = interp_zscore[pre_mask]
+                                                post_zscore_data = interp_zscore[post_mask]
+                                                
+                                                statistics_rows.append({
+                                                    'day': day_name,
+                                                    'animal_id': animal_id,
+                                                    'event_type': event_type,
+                                                    'channel': channel,
+                                                    'wavelength': wavelength,
+                                                    'trial': trial_idx + 1,
+                                                    'pre_min': np.min(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                                    'pre_max': np.max(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                                    'pre_mean': np.mean(pre_zscore_data) if len(pre_zscore_data) > 0 else np.nan,
+                                                    'pre_area': np.trapz(pre_zscore_data, time_array[pre_mask]) if len(pre_zscore_data) > 0 else np.nan,
+                                                    'post_min': np.min(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                                    'post_max': np.max(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                                    'post_mean': np.mean(post_zscore_data) if len(post_zscore_data) > 0 else np.nan,
+                                                    'post_area': np.trapz(post_zscore_data, time_array[post_mask]) if len(post_zscore_data) > 0 else np.nan,
                                                     'signal_type': 'fiber_zscore'
                                                 })
                             
-                            if channel_wavelength_episodes:
-                                all_fiber_episodes[wavelength].extend(channel_wavelength_episodes)
+                            if channel_wavelength_dff_episodes:
+                                all_dff_episodes[wavelength].extend(channel_wavelength_dff_episodes)
+                            if channel_wavelength_zscore_episodes:
+                                all_zscore_episodes[wavelength].extend(channel_wavelength_zscore_episodes)
                 
             except Exception as e:
                 log_message(f"Error analyzing {animal_data.get('animal_id', 'Unknown')}: {str(e)}", "ERROR")
@@ -1426,31 +1759,48 @@ class AcrossdayAnalysis:
         # Calculate mean and SEM for running
         running_episodes = np.array(all_running_episodes)
         
-        # Calculate mean and SEM for each wavelength
-        fiber_results = {}
-        for wavelength, episodes in all_fiber_episodes.items():
-            if episodes:
-                episodes_array = np.array(episodes)
-                fiber_results[wavelength] = {
-                    'time': time_array_fiber,
+        # Calculate mean and SEM for each wavelength for both dFF and z-score
+        dff_results = {}
+        zscore_results = {}
+        
+        for wavelength in target_wavelengths:
+            # Process dFF episodes
+            dff_episodes = all_dff_episodes.get(wavelength, [])
+            if dff_episodes:
+                episodes_array = np.array(dff_episodes)
+                dff_results[wavelength] = {
+                    'time': time_array,
                     'mean': np.nanmean(episodes_array, axis=0),
-                    'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(episodes)),
+                    'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(dff_episodes)),
+                    'episodes': episodes_array
+                }
+            
+            # Process z-score episodes
+            zscore_episodes = all_zscore_episodes.get(wavelength, [])
+            if zscore_episodes:
+                episodes_array = np.array(zscore_episodes)
+                zscore_results[wavelength] = {
+                    'time': time_array,
+                    'mean': np.nanmean(episodes_array, axis=0),
+                    'sem': np.nanstd(episodes_array, axis=0) / np.sqrt(len(zscore_episodes)),
                     'episodes': episodes_array
                 }
         
         result = {
             'running': {
-                'time': time_array_running,
+                'time': time_array,
                 'mean': np.nanmean(running_episodes, axis=0),
                 'sem': np.nanstd(running_episodes, axis=0) / np.sqrt(len(running_episodes)),
                 'episodes': running_episodes
             },
-            'fiber': fiber_results,  # Now organized by wavelength
+            'dff': dff_results,  # Organized by wavelength for dFF
+            'zscore': zscore_results,  # Organized by wavelength for z-score
             'target_wavelengths': target_wavelengths,
-            'zscore_baseline_type': zscore_baseline_type  # Store baseline type for reference
+            'zscore_baseline_type': zscore_baseline_type,
+            'zscore_baseline_window': zscore_baseline_window
         }
         
-        log_message(f"Day {day_name} analyzed with baseline type: {zscore_baseline_type}")
+        log_message(f"Day {day_name} analyzed with baseline type: {zscore_baseline_type} ({zscore_baseline_window}s)")
         
         return result, statistics_rows if collect_statistics else None
 
@@ -1494,9 +1844,9 @@ class AcrossdayAnalysis:
         result_window.state("zoomed")
         result_window.configure(bg="#ffffff")
         
-        # Calculate number of rows needed: 1 running row + N wavelength rows
+        # Calculate number of columns needed: 1 running + 2 * N wavelengths (dFF + z-score)
         num_wavelengths = len(target_wavelengths)
-        num_cols = 1 + num_wavelengths  # 1 for running + each wavelength
+        num_cols = 1 + 2 * num_wavelengths  # 1 for running + 2 for each wavelength (dFF + z-score)
 
         # Create figure with subplots: 2 rows, num_cols columns
         fig = Figure(figsize=(4 * num_cols, 10), dpi=100)
@@ -1526,29 +1876,55 @@ class AcrossdayAnalysis:
         ax_running_trace.grid(False)
         plot_idx += 1
 
-        # 2-N. Fiber traces for each wavelength
+        # 2-N. Fiber dFF and z-score traces for each wavelength
         fiber_colors = ['#008000', "#FF0000", '#FFA500']
         for wl_idx, wavelength in enumerate(target_wavelengths):
-            ax_fiber_trace = fig.add_subplot(2, num_cols, plot_idx)
+            color = fiber_colors[wl_idx % len(fiber_colors)]
+            
+            # dFF trace
+            ax_dff_trace = fig.add_subplot(2, num_cols, plot_idx)
             for idx, (day_name, data) in enumerate(results.items()):
                 day_color = self.day_colors[idx % len(self.day_colors)]
-                if 'fiber' in data and wavelength in data['fiber']:
-                    fiber_data = data['fiber'][wavelength]
-                    ax_fiber_trace.plot(fiber_data['time'], fiber_data['mean'],
+                if 'dff' in data and wavelength in data['dff']:
+                    dff_data = data['dff'][wavelength]
+                    ax_dff_trace.plot(dff_data['time'], dff_data['mean'],
+                                    color=day_color, linewidth=2, label=day_name)
+                    ax_dff_trace.fill_between(dff_data['time'],
+                                            dff_data['mean'] - dff_data['sem'],
+                                            dff_data['mean'] + dff_data['sem'],
+                                            color=day_color, alpha=0.3)
+            ax_dff_trace.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+            ax_dff_trace.axhline(y=0, color='#808080', linestyle='--', alpha=0.8)
+            ax_dff_trace.set_xlabel('Time (s)')
+            ax_dff_trace.set_ylabel('ΔF/F')
+            if 'dff' in data and wavelength in data['dff']:
+                ax_dff_trace.set_xlim(dff_data['time'][0], dff_data['time'][-1])
+            ax_dff_trace.set_title(f'Fiber ΔF/F {wavelength}nm - All Days')
+            ax_dff_trace.legend()
+            ax_dff_trace.grid(False)
+            plot_idx += 1
+            
+            # Z-score trace
+            ax_zscore_trace = fig.add_subplot(2, num_cols, plot_idx)
+            for idx, (day_name, data) in enumerate(results.items()):
+                day_color = self.day_colors[idx % len(self.day_colors)]
+                if 'zscore' in data and wavelength in data['zscore']:
+                    zscore_data = data['zscore'][wavelength]
+                    ax_zscore_trace.plot(zscore_data['time'], zscore_data['mean'],
                                         color=day_color, linewidth=2, label=day_name)
-                    ax_fiber_trace.fill_between(fiber_data['time'],
-                                                fiber_data['mean'] - fiber_data['sem'],
-                                                fiber_data['mean'] + fiber_data['sem'],
+                    ax_zscore_trace.fill_between(zscore_data['time'],
+                                                zscore_data['mean'] - zscore_data['sem'],
+                                                zscore_data['mean'] + zscore_data['sem'],
                                                 color=day_color, alpha=0.3)
-
-            ax_fiber_trace.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
-            ax_fiber_trace.axhline(y=0, color='#808080', linestyle='--', alpha=0.8)
-            ax_fiber_trace.set_xlabel('Time (s)')
-            ax_fiber_trace.set_ylabel('Z-score')
-            ax_fiber_trace.set_xlim(fiber_data['time'][0], fiber_data['time'][-1])
-            ax_fiber_trace.set_title(f'Fiber Z-score {wavelength}nm - All Days')
-            ax_fiber_trace.legend()
-            ax_fiber_trace.grid(False)
+            ax_zscore_trace.axvline(x=0, color='#808080', linestyle='--', alpha=0.8)
+            ax_zscore_trace.axhline(y=0, color='#808080', linestyle='--', alpha=0.8)
+            ax_zscore_trace.set_xlabel('Time (s)')
+            ax_zscore_trace.set_ylabel('Z-score')
+            if 'zscore' in data and wavelength in data['zscore']:
+                ax_zscore_trace.set_xlim(zscore_data['time'][0], zscore_data['time'][-1])
+            ax_zscore_trace.set_title(f'Fiber Z-score {wavelength}nm - All Days')
+            ax_zscore_trace.legend()
+            ax_zscore_trace.grid(False)
             plot_idx += 1
 
         # === Row 2: All heatmaps ===
@@ -1558,10 +1934,16 @@ class AcrossdayAnalysis:
         self.plot_combined_running_heatmap(results, ax_running_heatmap)
         plot_idx += 1
 
-        # 2-N. Fiber heatmaps for each wavelength
+        # 2-N. Fiber dFF and z-score heatmaps for each wavelength
         for wl_idx, wavelength in enumerate(target_wavelengths):
-            ax_fiber_heatmap = fig.add_subplot(2, num_cols, plot_idx)
-            self.plot_combined_fiber_heatmap_by_wavelength(results, ax_fiber_heatmap, wavelength)
+            # dFF heatmap
+            ax_dff_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            self.plot_combined_fiber_heatmap_by_wavelength(results, ax_dff_heatmap, wavelength, 'dff')
+            plot_idx += 1
+            
+            # Z-score heatmap
+            ax_zscore_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            self.plot_combined_fiber_heatmap_by_wavelength(results, ax_zscore_heatmap, wavelength, 'zscore')
             plot_idx += 1
 
         fig.tight_layout()
@@ -1608,35 +1990,39 @@ class AcrossdayAnalysis:
             ax.set_title('Running Heatmap - All Days')
             ax.axis('off')
 
-    def plot_combined_fiber_heatmap_by_wavelength(self, results, ax, wavelength):
-        """Plot combined fiber heatmap for all days for a specific wavelength"""
+    def plot_combined_fiber_heatmap_by_wavelength(self, results, ax, wavelength, data_type='dff'):
+        """Plot combined fiber heatmap for all days for a specific wavelength and data type (dff or zscore)"""
         all_fiber_episodes = []
         
         for day_name, data in results.items():
-            if 'fiber' in data and wavelength in data['fiber']:
-                fiber_data = data['fiber'][wavelength]
+            if data_type in data and wavelength in data[data_type]:
+                fiber_data = data[data_type][wavelength]
                 if 'episodes' in fiber_data:
                     episodes = fiber_data['episodes']
                     all_fiber_episodes.extend(episodes)
         
         if all_fiber_episodes:
             all_fiber_episodes = np.array(all_fiber_episodes)
-            time_array = list(results.values())[0]['fiber'][wavelength]['time']
+            time_array = list(results.values())[0][data_type][wavelength]['time']
+            
+            cmap = 'coolwarm' if data_type == 'zscore' else 'viridis'
+            label = 'Z-score' if data_type == 'zscore' else 'ΔF/F'
             
             im = ax.imshow(all_fiber_episodes, aspect='auto',
                         extent=[time_array[0], time_array[-1],
                                 len(all_fiber_episodes), 1],
-                        cmap='coolwarm', origin='lower')
+                        cmap=cmap, origin='lower')
             ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial (All Days)')
-            ax.set_title(f'Fiber Heatmap {wavelength}nm - All Days')
-            plt.colorbar(im, ax=ax, label='Z-score', orientation='horizontal')
+            ax.set_title(f'Fiber {label} {wavelength}nm - All Days')
+            plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
         else:
-            ax.text(0.5, 0.5, f'No fiber data available for {wavelength}nm', 
+            data_label = 'Z-score' if data_type == 'zscore' else 'ΔF/F'
+            ax.text(0.5, 0.5, f'No {data_label} data available for {wavelength}nm', 
                 ha='center', va='center', transform=ax.transAxes,
                 fontsize=12, color='#666666')
-            ax.set_title(f'Fiber Heatmap {wavelength}nm - All Days')
+            ax.set_title(f'Fiber {data_label} {wavelength}nm - All Days')
             ax.axis('off')
 
     def create_individual_day_windows(self, results):
@@ -1657,7 +2043,7 @@ class AcrossdayAnalysis:
         day_window.configure(bg='#f8f8f8')
         
         num_wavelengths = len(target_wavelengths)
-        num_cols = 1 + num_wavelengths          # 1 running + N wavelengths
+        num_cols = 1 + 2 * num_wavelengths  # 1 running + 2 * N wavelengths (dFF + z-score)
         fig = Figure(figsize=(4 * num_cols, 8), dpi=100)
 
         day_idx = list(self.results.keys()).index(day_name) if hasattr(self, 'results') else 0
@@ -1684,33 +2070,58 @@ class AcrossdayAnalysis:
         ax_rt.grid(False)
         plot_idx += 1
 
-        # 2-N. fiber traces
+        # 2-N. fiber dFF and z-score traces
         for wl_idx, wl in enumerate(target_wavelengths):
-            ax_ft = fig.add_subplot(2, num_cols, plot_idx)
-            if ('fiber' not in data) or (wl not in data['fiber']):
-                ax_ft.text(0.5, 0.5, f'No data for {wl}nm',
-                        ha='center', va='center', transform=ax_ft.transAxes,
-                        fontsize=12, color='#666666')
-                ax_ft.set_title(f'{day_name} - Fiber Trace {wl}nm')
-                ax_ft.axis('off')
-                plot_idx += 1
-                continue
-
-            fiber_data = data['fiber'][wl]
             color = fiber_colors[wl_idx % len(fiber_colors)]
-            ax_ft.plot(fiber_data['time'], fiber_data['mean'],
-                    color=color, linewidth=2)
-            ax_ft.fill_between(fiber_data['time'],
-                            fiber_data['mean'] - fiber_data['sem'],
-                            fiber_data['mean'] + fiber_data['sem'],
+            
+            # dFF trace
+            ax_dff_trace = fig.add_subplot(2, num_cols, plot_idx)
+            if 'dff' in data and wl in data['dff']:
+                dff_data = data['dff'][wl]
+                ax_dff_trace.plot(dff_data['time'], dff_data['mean'],
+                        color=color, linewidth=2)
+                ax_dff_trace.fill_between(dff_data['time'],
+                            dff_data['mean'] - dff_data['sem'],
+                            dff_data['mean'] + dff_data['sem'],
                             color=color, alpha=0.3)
-            ax_ft.axvline(0, color='#808080', ls='--', alpha=0.8)
-            ax_ft.axhline(0, color='#808080', ls='--', alpha=0.8)
-            ax_ft.set_xlabel('Time (s)')
-            ax_ft.set_ylabel('Z-score')
-            ax_ft.set_xlim(fiber_data['time'][0], fiber_data['time'][-1])
-            ax_ft.set_title(f'{day_name} - Fiber Trace {wl}nm')
-            ax_ft.grid(False)
+                ax_dff_trace.axvline(0, color='#808080', ls='--', alpha=0.8)
+                ax_dff_trace.axhline(0, color='#808080', ls='--', alpha=0.8)
+                ax_dff_trace.set_xlabel('Time (s)')
+                ax_dff_trace.set_ylabel('ΔF/F')
+                ax_dff_trace.set_xlim(dff_data['time'][0], dff_data['time'][-1])
+                ax_dff_trace.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
+                ax_dff_trace.grid(False)
+            else:
+                ax_dff_trace.text(0.5, 0.5, f'No dFF data for {wl}nm',
+                        ha='center', va='center', transform=ax_dff_trace.transAxes,
+                        fontsize=12, color='#666666')
+                ax_dff_trace.set_title(f'{day_name} - Fiber ΔF/F {wl}nm')
+                ax_dff_trace.axis('off')
+            plot_idx += 1
+            
+            # z-score trace
+            ax_zscore_trace = fig.add_subplot(2, num_cols, plot_idx)
+            if 'zscore' in data and wl in data['zscore']:
+                zscore_data = data['zscore'][wl]
+                ax_zscore_trace.plot(zscore_data['time'], zscore_data['mean'],
+                        color=color, linewidth=2)
+                ax_zscore_trace.fill_between(zscore_data['time'],
+                            zscore_data['mean'] - zscore_data['sem'],
+                            zscore_data['mean'] + zscore_data['sem'],
+                            color=color, alpha=0.3)
+                ax_zscore_trace.axvline(0, color='#808080', ls='--', alpha=0.8)
+                ax_zscore_trace.axhline(0, color='#808080', ls='--', alpha=0.8)
+                ax_zscore_trace.set_xlabel('Time (s)')
+                ax_zscore_trace.set_ylabel('Z-score')
+                ax_zscore_trace.set_xlim(zscore_data['time'][0], zscore_data['time'][-1])
+                ax_zscore_trace.set_title(f'{day_name} - Fiber Z-score {wl}nm')
+                ax_zscore_trace.grid(False)
+            else:
+                ax_zscore_trace.text(0.5, 0.5, f'No z-score data for {wl}nm',
+                        ha='center', va='center', transform=ax_zscore_trace.transAxes,
+                        fontsize=12, color='#666666')
+                ax_zscore_trace.set_title(f'{day_name} - Fiber Z-score {wl}nm')
+                ax_zscore_trace.axis('off')
             plot_idx += 1
 
         # 1. running heatmap
@@ -1734,36 +2145,65 @@ class AcrossdayAnalysis:
             ax_rh.axis('off')
         plot_idx += 1
 
-        # 2-N. fiber heatmaps
+        # 2-N. fiber dFF and z-score heatmaps
         for wl_idx, wl in enumerate(target_wavelengths):
-            ax_fh = fig.add_subplot(2, num_cols, plot_idx)
-            if ('fiber' not in data) or (wl not in data['fiber']):
-                ax_fh.text(0.5, 0.5, f'No data for {wl}nm', ha='center', va='center',
-                        transform=ax_fh.transAxes, fontsize=12, color='#666666')
-                ax_fh.set_title(f'{day_name} - Fiber Heatmap {wl}nm')
-                ax_fh.axis('off')
-                plot_idx += 1
-                continue
-
-            fiber_data = data['fiber'][wl]
-            fiber_episodes = fiber_data['episodes']
-            time_arr = fiber_data['time']
-            if len(fiber_episodes):
-                im2 = ax_fh.imshow(fiber_episodes, aspect='auto',
-                                extent=[time_arr[0], time_arr[-1],
-                                        len(fiber_episodes), 1],
-                                cmap='coolwarm', origin='lower')
-                ax_fh.axvline(0, color='#FF0000', ls='--', alpha=0.8)
-                ax_fh.set_xlabel('Time (s)')
-                ax_fh.set_ylabel('Trial')
-                ax_fh.set_title(f'{day_name} - Fiber Heatmap {wl}nm')
-                fig.colorbar(im2, ax=ax_fh, label='Z-score', orientation='horizontal')
+            # dFF heatmap
+            ax_dff_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            if 'dff' in data and wl in data['dff']:
+                dff_data = data['dff'][wl]
+                dff_episodes = dff_data['episodes']
+                time_arr = dff_data['time']
+                if len(dff_episodes):
+                    im2 = ax_dff_heatmap.imshow(dff_episodes, aspect='auto',
+                                            extent=[time_arr[0], time_arr[-1],
+                                                    len(dff_episodes), 1],
+                                            cmap='viridis', origin='lower')
+                    ax_dff_heatmap.axvline(0, color='#FF0000', ls='--', alpha=0.8)
+                    ax_dff_heatmap.set_xlabel('Time (s)')
+                    ax_dff_heatmap.set_ylabel('Trial')
+                    ax_dff_heatmap.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+                    fig.colorbar(im2, ax=ax_dff_heatmap, label='ΔF/F', orientation='horizontal')
+                else:
+                    ax_dff_heatmap.text(0.5, 0.5, f'No dFF episodes for {wl}nm',
+                            ha='center', va='center', transform=ax_dff_heatmap.transAxes,
+                            fontsize=12, color='#666666')
+                    ax_dff_heatmap.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+                    ax_dff_heatmap.axis('off')
             else:
-                ax_fh.text(0.5, 0.5, f'No fiber episodes for {wl}nm',
-                        ha='center', va='center', transform=ax_fh.transAxes,
+                ax_dff_heatmap.text(0.5, 0.5, f'No dFF data for {wl}nm', ha='center', va='center',
+                        transform=ax_dff_heatmap.transAxes, fontsize=12, color='#666666')
+                ax_dff_heatmap.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
+                ax_dff_heatmap.axis('off')
+            plot_idx += 1
+            
+            # z-score heatmap
+            ax_zscore_heatmap = fig.add_subplot(2, num_cols, plot_idx)
+            if 'zscore' in data and wl in data['zscore']:
+                zscore_data = data['zscore'][wl]
+                zscore_episodes = zscore_data['episodes']
+                time_arr = zscore_data['time']
+                if len(zscore_episodes):
+                    im3 = ax_zscore_heatmap.imshow(zscore_episodes, aspect='auto',
+                                            extent=[time_arr[0], time_arr[-1],
+                                                    len(zscore_episodes), 1],
+                                            cmap='coolwarm', origin='lower')
+                    ax_zscore_heatmap.axvline(0, color='#FF0000', ls='--', alpha=0.8)
+                    ax_zscore_heatmap.set_xlabel('Time (s)')
+                    ax_zscore_heatmap.set_ylabel('Trial')
+                    ax_zscore_heatmap.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+                    fig.colorbar(im3, ax=ax_zscore_heatmap, label='Z-score', orientation='horizontal')
+                else:
+                    ax_zscore_heatmap.text(0.5, 0.5, f'No z-score episodes for {wl}nm',
+                            ha='center', va='center', transform=ax_zscore_heatmap.transAxes,
+                            fontsize=12, color='#666666')
+                    ax_zscore_heatmap.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+                    ax_zscore_heatmap.axis('off')
+            else:
+                ax_zscore_heatmap.text(0.5, 0.5, f'No z-score data for {wl}nm',
+                        ha='center', va='center', transform=ax_zscore_heatmap.transAxes,
                         fontsize=12, color='#666666')
-                ax_fh.set_title(f'{day_name} - Fiber Heatmap {wl}nm')
-                ax_fh.axis('off')
+                ax_zscore_heatmap.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
+                ax_zscore_heatmap.axis('off')
             plot_idx += 1
 
         fig.tight_layout()
@@ -1781,7 +2221,7 @@ class AcrossdayAnalysis:
         self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
         log_message(f"Individual day plot created for {day_name} with {len(target_wavelengths)} wavelength(s)")
-
+        
 class OptogeneticAnalysis():
     def optogenetic_analysis(self):
         """Perform optogenetic analysis aligned to Input3 events"""

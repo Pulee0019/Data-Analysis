@@ -60,7 +60,7 @@ def classify_treadmill_behavior(ast2_data,
         )
         
         # Classify movement onsets into jerks and locomotion initiations
-        jerks_onsets, locomotion_onsets, reset_onsets = classify_movement_onsets(
+        jerks, locomotion_onsets, reset_onsets = classify_movement_onsets(
             general_onsets, timestamps, smoothed_velocity, jerk_velocity_threshold,
             locomotion_initiation_velocity_threshold, rest_velocity_threshold
         )
@@ -82,7 +82,7 @@ def classify_treadmill_behavior(ast2_data,
             termination_velocity_threshold, termination_duration
         )
 
-        jerks_offsets, locomotion_offsets, reset_offsets = classify_movement_offsets(
+        locomotion_offsets, reset_offsets = classify_movement_offsets(
             general_offsets, timestamps, smoothed_velocity, jerk_velocity_threshold,
             locomotion_initiation_velocity_threshold, rest_velocity_threshold
         )
@@ -91,12 +91,11 @@ def classify_treadmill_behavior(ast2_data,
             'movement_periods': movement_periods,
             'rest_periods': rest_periods,
             'general_onsets': general_onsets,
-            'jerks_onsets': jerks_onsets,
+            'jerks': jerks,
             'locomotion_onsets': locomotion_onsets,
             'reset_onsets': reset_onsets,
             'continuous_locomotion_periods': continuous_locomotion_periods,
             'general_offsets': general_offsets,
-            'jerks_offsets': jerks_offsets,
             'locomotion_offsets': locomotion_offsets,
             'reset_offsets': reset_offsets,
             'smoothed_velocity': smoothed_velocity,
@@ -196,7 +195,7 @@ def detect_general_onsets(timestamps, velocity, onset_threshold, peak_threshold,
 
 def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locomotion_threshold, rest_threshold):
     """Classify movement onsets into jerks and locomotion initiations"""
-    jerks_onsets = []
+    jerks = []
     locomotion_onsets = []
     reset_onsets = []
     sample_interval = np.mean(np.diff(timestamps))
@@ -231,7 +230,7 @@ def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locom
             reset_onsets.append(onset_time)
         elif mean_vel_pre_2s < rest_threshold:
             if max_vel_1_2s < jerk_threshold:
-                jerks_onsets.append(onset_time)
+                jerks.append(onset_time)
             elif mean_vel_0_5_2s > locomotion_threshold:
                 locomotion_onsets.append(onset_time)
 
@@ -240,7 +239,7 @@ def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locom
         # elif mean_vel_0_5_2s > locomotion_threshold:
         #     locomotion_initiations.append(onset_time)
     
-    return jerks_onsets, locomotion_onsets, reset_onsets
+    return jerks, locomotion_onsets, reset_onsets
 
 def detect_continuous_locomotion(timestamps, velocity, velocity_threshold, min_duration):
     """Detect continuous locomotion periods"""
@@ -278,7 +277,6 @@ def detect_general_offsets(timestamps, velocity, locomotion_periods,
 
 def classify_movement_offsets(offsets, timestamps, velocity, jerk_threshold, locomotion_threshold, rest_threshold):
     """Classify movement offsets into jerks and locomotion terminations"""
-    jerks_offsets = []
     locomotion_offsets = []
     reset_offsets = []
     sample_interval = np.mean(np.diff(timestamps))
@@ -312,13 +310,10 @@ def classify_movement_offsets(offsets, timestamps, velocity, jerk_threshold, loc
         
         if mean_vel_post_2s > rest_threshold and mean_vel_0_5_2s > locomotion_threshold:
             reset_offsets.append(offset_time)
-        elif mean_vel_post_2s < rest_threshold:
-            if max_vel_1_2s < jerk_threshold:
-                jerks_offsets.append(offset_time)
-            elif mean_vel_0_5_2s > locomotion_threshold:
-                locomotion_offsets.append(offset_time)
+        elif mean_vel_post_2s < rest_threshold and mean_vel_0_5_2s > locomotion_threshold:
+            locomotion_offsets.append(offset_time)
     
-    return jerks_offsets, locomotion_offsets, reset_offsets
+    return locomotion_offsets, reset_offsets
 
 def find_contiguous_regions(mask, min_samples):
     """Find contiguous regions in a boolean mask with minimum length"""
