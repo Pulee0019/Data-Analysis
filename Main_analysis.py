@@ -1729,26 +1729,11 @@ class RunningVisualizationWindow:
         
         color = colors.get(analysis_type, 'black')
         
-        if analysis_type in ['movement_periods', 'rest_periods']:
+        if analysis_type in ['movement_periods', 'rest_periods', 'continuous_locomotion_periods']:
             # Plot periods as shaded regions
             for i, (start, end) in enumerate(data):
                 self.ax.axvspan(start, end, alpha=alpha_values['periods'], color=color,
                               label=analysis_type.replace('_', ' ').title() if i == 0 else "")
-                
-        elif analysis_type == "continuous_locomotion_periods":
-            # Plot periods as shaded regions
-            for i, (start, end) in enumerate(data):
-                self.ax.axvspan(start, end, alpha=alpha_values['periods'], color=color,
-                              label="Continuous Locomotion" if i == 0 else "")
-            self.ax.axhline(y=4.5, color='#000000', linestyle='--', alpha=0.5, label="continuous locomotion velocity threshold")
-
-        elif analysis_type == 'general_onsets':
-            # Plot events as vertical lines
-            for i, event_time in enumerate(data):
-                self.ax.axvline(x=event_time, color=color, linestyle='--', alpha=alpha_values['events'],
-                              label=analysis_type.replace('_', ' ').title() if i == 0 else "")
-            self.ax.axhline(y=0.2, color='#000000', linestyle='--', alpha=0.5, label="onset threshold")
-            self.ax.axhline(y=1.0, color="#353333", linestyle='--', alpha=0.5, label="peak threshold")
 
         else:
             # Plot events as vertical lines
@@ -4852,14 +4837,23 @@ running_analysis_menu.add_command(label="Rest Periods",
                                  command=lambda: running_data_analysis_wrapper('rest_periods'))
 running_analysis_menu.add_command(label="General Onsets", 
                                  command=lambda: running_data_analysis_wrapper('general_onsets'))
-running_analysis_menu.add_command(label="Jerks", 
-                                 command=lambda: running_data_analysis_wrapper('jerks'))
-running_analysis_menu.add_command(label="Locomotion Initiations", 
-                                 command=lambda: running_data_analysis_wrapper('locomotion_initiations'))
+running_analysis_menu.add_command(label="Jerks Onsets", 
+                                 command=lambda: running_data_analysis_wrapper('jerks_onsets'))
+running_analysis_menu.add_command(label="Locomotion Onsets", 
+                                 command=lambda: running_data_analysis_wrapper('locomotion_onsets'))
+running_analysis_menu.add_command(label="Reset Onsets", 
+                                 command=lambda: running_data_analysis_wrapper('reset_onsets'))
 running_analysis_menu.add_command(label="Continuous Locomotion Periods", 
                                  command=lambda: running_data_analysis_wrapper('continuous_locomotion_periods'))
-running_analysis_menu.add_command(label="Locomotion Terminations", 
-                                 command=lambda: running_data_analysis_wrapper('locomotion_terminations'))
+running_analysis_menu.add_command(label="General Offsets", 
+                                 command=lambda: running_data_analysis_wrapper('general_offsets'))
+running_analysis_menu.add_command(label="Jerks Offsets", 
+                                 command=lambda: running_data_analysis_wrapper('jerks_offsets'))
+running_analysis_menu.add_command(label="Locomotion Offsets", 
+                                 command=lambda: running_data_analysis_wrapper('locomotion_offsets'))
+running_analysis_menu.add_command(label="Reset Offsets", 
+                                 command=lambda: running_data_analysis_wrapper('reset_offsets'))
+
 analysis_menu.add_separator()
 analysis_menu.add_command(label="Fiber Data Preprocessing", command=fiber_preprocessing)
 fiber_analysis_menu = tk.Menu(analysis_menu, tearoff=0)
@@ -4882,12 +4876,20 @@ event_activity_menu = tk.Menu(multimodal_menu, tearoff=0)
 multimodal_menu.add_cascade(label="Running Event-Activity Analysis", menu=event_activity_menu)
 event_activity_menu.add_command(label="General Onsets", 
                                command=lambda: init_multimodal_analysis().running_event_activity_analysis('general_onsets'))
-event_activity_menu.add_command(label="Jerks", 
-                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('jerks'))
-event_activity_menu.add_command(label="Locomotion Initiations", 
-                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_initiations'))
-event_activity_menu.add_command(label="Locomotion Terminations", 
-                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_terminations'))
+event_activity_menu.add_command(label="Jerks Onsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('jerks_onsets'))
+event_activity_menu.add_command(label="Locomotion Onsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_onsets'))
+event_activity_menu.add_command(label="Reset Onsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('reset_onsets'))
+event_activity_menu.add_command(label="General Offsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('gereral_offsets'))
+event_activity_menu.add_command(label="Jerks Offsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('jerks_offsets'))
+event_activity_menu.add_command(label="Locomotion Offsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('locomotion_offsets'))
+event_activity_menu.add_command(label="Reset Offsets", 
+                               command=lambda: init_multimodal_analysis().running_event_activity_analysis('reset_offsets'))
 
 # Running Event-Trajectory Analysis submenu
 event_trajectory_menu = tk.Menu(multimodal_menu, tearoff=0)
@@ -4904,12 +4906,20 @@ acrossday_menu = tk.Menu(multimodal_menu, tearoff=0)
 multimodal_menu.add_cascade(label="Acrossday Analysis", menu=acrossday_menu)
 acrossday_menu.add_command(label="General Onsets",
                           command=lambda: initial_acrossday_analysis().show_config_window('general_onsets'))
-acrossday_menu.add_command(label="Jerks",
-                          command=lambda: initial_acrossday_analysis().show_config_window('jerks'))
-acrossday_menu.add_command(label="Locomotion Initiations",
-                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_initiations'))
-acrossday_menu.add_command(label="Locomotion Terminations",
-                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_terminations'))
+acrossday_menu.add_command(label="Jerks Onsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('jerks_onsets'))
+acrossday_menu.add_command(label="Locomotion Onsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_onsets'))
+acrossday_menu.add_command(label="Reset Onsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('reset_onsets'))
+acrossday_menu.add_command(label="General Offsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('general_offsets'))
+acrossday_menu.add_command(label="Jerks Offsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('jerks_offsets'))
+acrossday_menu.add_command(label="Locomotion Offsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('locomotion_offsets'))
+acrossday_menu.add_command(label="Reset Offsets",
+                          command=lambda: initial_acrossday_analysis().show_config_window('reset_offsets'))
 
 # Optogenetic Analysis submenu
 multimodal_menu.add_command(label="Optogenetic Analysis", 
@@ -4917,7 +4927,7 @@ multimodal_menu.add_command(label="Optogenetic Analysis",
 
 # Drug Analysis submenu
 multimodal_menu.add_command(label="Drug Analysis", 
-                             command=lambda: init_drug_analysis().drug_analysis())
+                             command=lambda: initial_drug_analysis().drug_analysis())
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)

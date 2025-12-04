@@ -10,7 +10,7 @@ def classify_treadmill_behavior(ast2_data,
                                continuous_locomotion_velocity_threshold=4.5,
                                continuous_locomotion_min_duration=3.0,
                                termination_velocity_threshold=2.2,
-                               termination_duration=1.0,
+                               termination_duration=0.5,
                                smoothing_window=0.05,  # 50ms
                                classification_window=1.0,  # ±1s window
                                general_onset_velocity_threshold=0.2,
@@ -60,9 +60,9 @@ def classify_treadmill_behavior(ast2_data,
         )
         
         # Classify movement onsets into jerks and locomotion initiations
-        jerks, locomotion_initiations = classify_movement_onsets(
+        jerks_onsets, locomotion_onsets, reset_onsets = classify_movement_onsets(
             general_onsets, timestamps, smoothed_velocity, jerk_velocity_threshold,
-            locomotion_initiation_velocity_threshold
+            locomotion_initiation_velocity_threshold, rest_velocity_threshold
         )
         
         # Detect continuous locomotion periods
@@ -77,19 +77,28 @@ def classify_treadmill_behavior(ast2_data,
         )
         
         # Detect locomotion terminations
-        locomotion_terminations = detect_locomotion_terminations(
+        general_offsets = detect_general_offsets(
             timestamps, smoothed_velocity, continuous_locomotion_periods_for_termination,
             termination_velocity_threshold, termination_duration
+        )
+
+        jerks_offsets, locomotion_offsets, reset_offsets = classify_movement_offsets(
+            general_offsets, timestamps, smoothed_velocity, jerk_velocity_threshold,
+            locomotion_initiation_velocity_threshold, rest_velocity_threshold
         )
         
         return {
             'movement_periods': movement_periods,
             'rest_periods': rest_periods,
             'general_onsets': general_onsets,
-            'jerks': jerks,
-            'locomotion_initiations': locomotion_initiations,
-            'continuous_locomotion_periods': continuous_locomotion_periods_for_termination,
-            'locomotion_terminations': locomotion_terminations,
+            'jerks_onsets': jerks_onsets,
+            'locomotion_onsets': locomotion_onsets,
+            'reset_onsets': reset_onsets,
+            'continuous_locomotion_periods': continuous_locomotion_periods,
+            'general_offsets': general_offsets,
+            'jerks_offsets': jerks_offsets,
+            'locomotion_offsets': locomotion_offsets,
+            'reset_offsets': reset_offsets,
             'smoothed_velocity': smoothed_velocity,
             'acceleration': acceleration
         }
@@ -185,10 +194,11 @@ def detect_general_onsets(timestamps, velocity, onset_threshold, peak_threshold,
     
     return onsets
 
-def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locomotion_threshold):
+def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locomotion_threshold, rest_threshold):
     """Classify movement onsets into jerks and locomotion initiations"""
-    jerks = []
-    locomotion_initiations = []
+    jerks_onsets = []
+    locomotion_onsets = []
+    reset_onsets = []
     sample_interval = np.mean(np.diff(timestamps))
     
     for onset_time in onsets:
@@ -198,23 +208,39 @@ def classify_movement_onsets(onsets, timestamps, velocity, jerk_threshold, locom
         start_1s = onset_idx + int(1.0 / sample_interval)
         end_2s = onset_idx + int(2.0 / sample_interval)
         
+        pre_2s = onset_idx - int(2.0 / sample_interval)
+
+        if pre_2s < 0:
+            continue
+
         if end_2s >= len(velocity):
             continue
             
         vel_1_2s = velocity[start_1s:end_2s]
         max_vel_1_2s = np.max(vel_1_2s)
+
+        vel_pre_2s = velocity[pre_2s:onset_idx]
+        mean_vel_pre_2s = np.mean(vel_pre_2s)
         
         # Window 0.5-2 seconds after onset for locomotion classification
         start_0_5s = onset_idx + int(0.5 / sample_interval)
         vel_0_5_2s = velocity[start_0_5s:end_2s]
         mean_vel_0_5_2s = np.mean(vel_0_5_2s)
         
-        if max_vel_1_2s < jerk_threshold:
-            jerks.append(onset_time)
-        elif mean_vel_0_5_2s > locomotion_threshold:
-            locomotion_initiations.append(onset_time)
+        if mean_vel_pre_2s > rest_threshold and mean_vel_0_5_2s > locomotion_threshold:
+            reset_onsets.append(onset_time)
+        elif mean_vel_pre_2s < rest_threshold:
+            if max_vel_1_2s < jerk_threshold:
+                jerks_onsets.append(onset_time)
+            elif mean_vel_0_5_2s > locomotion_threshold:
+                locomotion_onsets.append(onset_time)
+
+        # if max_vel_1_2s < jerk_threshold:
+        #     jerks.append(onset_time)
+        # elif mean_vel_0_5_2s > locomotion_threshold:
+        #     locomotion_initiations.append(onset_time)
     
-    return jerks, locomotion_initiations
+    return jerks_onsets, locomotion_onsets, reset_onsets
 
 def detect_continuous_locomotion(timestamps, velocity, velocity_threshold, min_duration):
     """Detect continuous locomotion periods"""
@@ -232,7 +258,7 @@ def detect_continuous_locomotion(timestamps, velocity, velocity_threshold, min_d
     
     return locomotion_periods
 
-def detect_locomotion_terminations(timestamps, velocity, locomotion_periods, 
+def detect_general_offsets(timestamps, velocity, locomotion_periods, 
                                  velocity_threshold, termination_duration):
     """Detect locomotion terminations"""
     terminations = []
@@ -249,6 +275,50 @@ def detect_locomotion_terminations(timestamps, velocity, locomotion_periods,
                 terminations.append(end_time)
     
     return terminations
+
+def classify_movement_offsets(offsets, timestamps, velocity, jerk_threshold, locomotion_threshold, rest_threshold):
+    """Classify movement offsets into jerks and locomotion terminations"""
+    jerks_offsets = []
+    locomotion_offsets = []
+    reset_offsets = []
+    sample_interval = np.mean(np.diff(timestamps))
+    
+    for offset_time in offsets:
+        offset_idx = np.argmin(np.abs(timestamps - offset_time))
+        
+        # Window 1-2 seconds before offset for jerk classification
+        start_1s = offset_idx - int(2.0 / sample_interval)
+        end_2s = offset_idx - int(1.0 / sample_interval)
+        
+        post_2s = offset_idx + int(2.0 / sample_interval)
+
+        if start_1s < 0:
+            continue
+
+        if post_2s >= len(velocity):
+            continue
+            
+        vel_1_2s = velocity[start_1s:end_2s]
+        max_vel_1_2s = np.max(vel_1_2s)
+
+        vel_post_2s = velocity[offset_idx:post_2s]
+        mean_vel_post_2s = np.mean(vel_post_2s)
+        
+        # Window 0.5-2 seconds before offset for locomotion classification
+        start_0_5s = offset_idx - int(2.0 / sample_interval)
+        end_0_5s = offset_idx - int(0.5 / sample_interval)
+        vel_0_5_2s = velocity[start_0_5s:end_0_5s]
+        mean_vel_0_5_2s = np.mean(vel_0_5_2s)
+        
+        if mean_vel_post_2s > rest_threshold and mean_vel_0_5_2s > locomotion_threshold:
+            reset_offsets.append(offset_time)
+        elif mean_vel_post_2s < rest_threshold:
+            if max_vel_1_2s < jerk_threshold:
+                jerks_offsets.append(offset_time)
+            elif mean_vel_0_5_2s > locomotion_threshold:
+                locomotion_offsets.append(offset_time)
+    
+    return jerks_offsets, locomotion_offsets, reset_offsets
 
 def find_contiguous_regions(mask, min_samples):
     """Find contiguous regions in a boolean mask with minimum length"""

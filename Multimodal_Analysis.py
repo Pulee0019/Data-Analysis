@@ -161,8 +161,17 @@ class MultimodalAnalysis:
                             relief=tk.FLAT, padx=15, pady=5)
         cancel_btn.pack(side=tk.LEFT, padx=10)
     
-    def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
-        """Calculate z-score around events - supports combined wavelengths"""
+    def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal, event_type='onset'):
+        """
+        Calculate z-score around events - supports combined wavelengths
+        
+        Parameters:
+        -----------
+        event_type : str
+            Type of event: 'onset' or 'offset'
+            - 'onset': uses pre_time window as baseline (before event)
+            - 'offset': uses post_time window as baseline (after event)
+        """
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_zscore_episodes = {}
         
@@ -174,8 +183,15 @@ class MultimodalAnalysis:
             all_zscore_episodes[wavelength] = []
         
         for event_time in events:
-            baseline_start = event_time - pre_time
-            baseline_end = event_time
+            # Determine baseline window based on event type
+            if event_type == 'offset':
+                # For offsets: use post-event window as baseline
+                baseline_start = event_time
+                baseline_end = event_time + post_time
+            else:
+                # For onsets (default): use pre-event window as baseline
+                baseline_start = event_time - pre_time
+                baseline_end = event_time
             
             baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
             baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
@@ -261,6 +277,11 @@ class MultimodalAnalysis:
             log_message(f"No {event_name_display} events found", "INFO")
             return
         
+        # Determine zscore baseline type based on event type
+        # Offset events: use post window as baseline
+        # Onset events: use pre window as baseline
+        zscore_baseline_type = 'offset' if 'offset' in event_type.lower() else 'onset'
+        
         # Calculate z-score episodes for each channel and wavelength
         all_channel_zscore_episodes = {}
         for channel in selected_channels:
@@ -269,7 +290,7 @@ class MultimodalAnalysis:
                 continue
                 
             time_array, zscore_episodes_dict = self._calculate_zscore_around_events(
-                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal)
+                events, fiber_timestamps, wavelength_dff_data, pre_time, post_time, target_signal, zscore_baseline_type)
             all_channel_zscore_episodes[channel] = zscore_episodes_dict
         
         # Export statistics if requested
@@ -357,7 +378,8 @@ class MultimodalAnalysis:
         self.toolbar = NavigationToolbar2Tk(canvas, toolbar_frame)
         
         log_message(f"{event_name_display} analysis completed: {len(events)} events, "
-                f"channels {channel_label}, wavelengths {target_signal}, time window [-{pre_time},{post_time}]s")
+                f"channels {channel_label}, wavelengths {target_signal}, time window [-{pre_time},{post_time}]s, "
+                f"baseline type: {zscore_baseline_type}")
     
     def _export_event_statistics(self, animal_id, event_type, pre_time, post_time,
                            selected_channels, target_wavelengths,
@@ -1232,6 +1254,9 @@ class AcrossdayAnalysis:
         for wavelength in target_wavelengths:
             all_fiber_episodes[wavelength] = []
         
+        # Determine zscore baseline type based on event type
+        zscore_baseline_type = 'offset' if 'offset' in event_type.lower() else 'onset'
+        
         for animal_data in animals:
             try:
                 animal_id = animal_data.get('animal_id', 'Unknown')
@@ -1328,8 +1353,16 @@ class AcrossdayAnalysis:
                             channel_wavelength_episodes = []
                             
                             for trial_idx, event_time in enumerate(events):
-                                baseline_start = event_time - pre_time
-                                baseline_end = event_time
+                                # Determine baseline window based on event type
+                                if zscore_baseline_type == 'offset':
+                                    # For offsets: use post-event window as baseline
+                                    baseline_start = event_time
+                                    baseline_end = event_time + post_time
+                                else:
+                                    # For onsets: use pre-event window as baseline
+                                    baseline_start = event_time - pre_time
+                                    baseline_end = event_time
+                                
                                 baseline_start_idx = np.argmin(np.abs(fiber_timestamps - baseline_start))
                                 baseline_end_idx = np.argmin(np.abs(fiber_timestamps - baseline_end))
                                 
@@ -1413,8 +1446,11 @@ class AcrossdayAnalysis:
                 'episodes': running_episodes
             },
             'fiber': fiber_results,  # Now organized by wavelength
-            'target_wavelengths': target_wavelengths
+            'target_wavelengths': target_wavelengths,
+            'zscore_baseline_type': zscore_baseline_type  # Store baseline type for reference
         }
+        
+        log_message(f"Day {day_name} analyzed with baseline type: {zscore_baseline_type}")
         
         return result, statistics_rows if collect_statistics else None
 
