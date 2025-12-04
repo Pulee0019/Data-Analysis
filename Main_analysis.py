@@ -20,7 +20,7 @@ import re
 from Behavior_analysis import position_analysis, displacement_analysis, x_displacement_analysis
 from Fiber_analysis import apply_preprocessing, calculate_dff, calculate_zscore
 from Running_analysis import classify_treadmill_behavior, preprocess_running_data
-from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis, OptogeneticAnalysis
+from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis, OptogeneticAnalysis, DrugAnalysis
 from logger import log_message, set_log_widget
 
 try:
@@ -4586,6 +4586,21 @@ def initial_optogenetic_analysis():
     optogenetic_analyzer = OptogeneticAnalysis(root, multi_animal_data, current_animal_index)
     return optogenetic_analyzer
 
+def initial_drug_analysis():
+    """Initial setup for drug analysis"""
+    global drug_analyzer, multi_animal_data, current_animal_index
+    
+    if not multi_animal_data:
+        log_message("Please import animal data first", "ERROR")
+        return None
+    
+    if current_animal_index >= len(multi_animal_data):
+        log_message("Please select an animal first", "ERROR")
+        return None
+    
+    drug_analyzer = DrugAnalysis(root, multi_animal_data, current_animal_index)
+    return drug_analyzer
+
 def select_experiment_mode():
     """Open dialog to select experiment mode"""
     global current_experiment_mode
@@ -4899,6 +4914,10 @@ acrossday_menu.add_command(label="Locomotion Terminations",
 # Optogenetic Analysis submenu
 multimodal_menu.add_command(label="Optogenetic Analysis", 
                              command=lambda: initial_optogenetic_analysis().optogenetic_analysis())
+
+# Drug Analysis submenu
+multimodal_menu.add_command(label="Drug Analysis", 
+                             command=lambda: init_drug_analysis().drug_analysis())
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)

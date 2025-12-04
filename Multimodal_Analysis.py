@@ -1746,7 +1746,7 @@ class AcrossdayAnalysis:
         
         log_message(f"Individual day plot created for {day_name} with {len(target_wavelengths)} wavelength(s)")
 
-class OptogeneticAnalysis(MultimodalAnalysis):
+class OptogeneticAnalysis():
     def optogenetic_analysis(self):
         """Perform optogenetic analysis aligned to Input3 events"""
         if not self.multi_animal_data:
@@ -1805,3 +1805,74 @@ class OptogeneticAnalysis(MultimodalAnalysis):
             
             if export_statistics and day_stats:
                 all_statistics_rows.extend(day_stats)
+
+class DrugAnalysis():
+    def drug_analysis(self):
+        """Perform drug analysis aligned to Drug Administration events"""
+        if not self.multi_animal_data:
+            log_message("No animal data loaded for drug analysis", "ERROR")
+            return
+        
+        # Show parameter window
+        self._show_drug_param_window()
+    
+    def _show_drug_param_window(self):
+        """Show parameter configuration window for drug analysis"""
+        param_window = tk.Toplevel(self.root)
+        param_window.title("Drug Analysis Parameters")
+        param_window.geometry("400x250")
+        param_window.configure(bg="#f0f0f0")
+        
+        # Pre time
+        tk.Label(param_window, text="Pre-event Time (s):", bg="#f0f0f0").pack(pady=(20,5))
+        pre_time_var = tk.DoubleVar(value=10.0)
+        pre_time_entry = tk.Entry(param_window, textvariable=pre_time_var)
+        pre_time_entry.pack()
+        
+        # Post time
+        tk.Label(param_window, text="Post-event Time (s):", bg="#f0f0f0").pack(pady=(10,5))
+        post_time_var = tk.DoubleVar(value=30.0)
+        post_time_entry = tk.Entry(param_window, textvariable=post_time_var)
+        post_time_entry.pack()
+        
+        # Export statistics
+        export_var = tk.BooleanVar(value=False)
+        export_check = tk.Checkbutton(param_window, text="Export Statistics to CSV", variable=export_var, bg="#f0f0f0")
+        export_check.pack(pady=(10,10))
+        
+        # Start button
+        start_button = tk.Button(param_window, text="Start Analysis", 
+                                command=lambda: self._start_drug_analysis(
+                                    pre_time_var.get(), post_time_var.get(), export_var.get(), param_window))
+        start_button.pack(pady=(10,20))
+
+    def _start_drug_analysis(self, pre_time, post_time, export_statistics, param_window):
+        """Start drug analysis with given parameters"""
+        param_window.destroy()
+        
+        log_message("Starting drug analysis...")
+        
+        results = {}
+        all_statistics_rows = []
+        
+        for day_name, animals in self.multi_animal_data.items():
+            day_stats = []
+            day_result, day_stats = self.analyze_day(
+                day_name, animals, pre_time, post_time, event_type='Drug_Administration', collect_statistics=export_statistics)
+            
+            if day_result:
+                results[day_name] = day_result
+            
+            if export_statistics and day_stats:
+                all_statistics_rows.extend(day_stats)
+        
+        # Plot results
+        if results:
+            self.plot_results(results)
+            log_message("Drug analysis completed and results plotted.")
+        else:
+            log_message("No valid data found for drug analysis.", "WARNING")
+        
+        # Export statistics if requested
+        if export_statistics and all_statistics_rows:
+            self._export_acrossday_statistics(all_statistics_rows)
