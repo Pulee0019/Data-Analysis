@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -28,10 +28,7 @@ class MultimodalAnalysis:
         return None
     
     def running_event_activity_analysis(self, event_type):
-        """
-        Analyze specific running events (General Onsets, Jerks, etc.)
-        event_type: string key in treadmill_behaviors (e.g., 'general_onsets', 'jerks', 'locomotion_initiations')
-        """
+        """Analyze specific running events"""
         animal_data = self.get_current_animal_data()
         if not animal_data:
             log_message("No animal data available", "ERROR")
@@ -162,28 +159,7 @@ class MultimodalAnalysis:
         cancel_btn.pack(side=tk.LEFT, padx=10)
     
     def _calculate_dff_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, target_signal):
-        """
-        Extract dFF data around events without calculating baseline
-        
-        Parameters:
-        -----------
-        events : list
-            List of event timestamps
-        fiber_timestamps : array
-            Fiber photometry timestamps
-        dff_data : dict
-            Dictionary of dFF data organized by wavelength
-        pre_time : float
-            Time before event (seconds)
-        post_time : float
-            Time after event (seconds)
-        target_signal : str
-            Target signal wavelength(s)
-        
-        Returns:
-        --------
-        tuple: (time_array, dff_episodes_dict)
-        """
+        """Extract dFF data around events without calculating baseline"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_dff_episodes = {}
         
@@ -224,34 +200,7 @@ class MultimodalAnalysis:
 
     def _calculate_zscore_around_events(self, events, fiber_timestamps, dff_data, pre_time, post_time, 
                                     target_signal, event_type='onset', baseline_window=0.5):
-        """
-        Calculate z-score around events with fixed baseline window
-        
-        Parameters:
-        -----------
-        events : list
-            List of event timestamps
-        fiber_timestamps : array
-            Fiber photometry timestamps
-        dff_data : dict
-            Dictionary of dFF data organized by wavelength
-        pre_time : float
-            Time before event for plotting (does not affect baseline)
-        post_time : float
-            Time after event for plotting (does not affect baseline)
-        target_signal : str
-            Target signal wavelength(s)
-        event_type : str
-            Type of event: 'onset' or 'offset'
-            - 'onset': uses fixed pre-event window as baseline
-            - 'offset': uses fixed post-event window as baseline
-        baseline_window : float
-            Fixed baseline window duration in seconds
-        
-        Returns:
-        --------
-        tuple: (time_array, zscore_episodes_dict)
-        """
+        """Calculate z-score around events with fixed baseline window"""
         time_array = np.linspace(-pre_time, post_time, int((pre_time + post_time) * 10))
         all_zscore_episodes = {}
         
@@ -511,14 +460,7 @@ class MultimodalAnalysis:
                 f"zscore baseline: {zscore_baseline_type} {zscore_baseline_window}s")
     
     def _get_zscore_baseline_params(self, event_type):
-        """
-        Get z-score baseline parameters based on event type
-        
-        Returns:
-            tuple: (baseline_type, baseline_window)
-                baseline_type: 'onset' or 'offset'
-                baseline_window: float, baseline window duration in seconds
-        """
+        """Get z-score baseline parameters based on event type"""
         # Onset events use pre-event baseline
         if event_type in ['general_onsets', 'reset_onsets']:
             return ('onset', 0.5)
@@ -737,24 +679,7 @@ class MultimodalAnalysis:
         ax.grid(False)
     
     def _plot_fiber_signal_around_events(self, ax, time_array, episodes, title, ylabel='Signal', color="#008000"):
-        """
-        Plot fiber signal around events (mean±std) - generic function for dFF or z-score
-        
-        Parameters:
-        -----------
-        ax : matplotlib axis
-            Axis to plot on
-        time_array : array
-            Time array
-        episodes : list
-            List of episode data arrays
-        title : str
-            Plot title
-        ylabel : str
-            Y-axis label
-        color : str
-            Line color
-        """
+        """Plot fiber signal around events (mean±std) - generic function for dFF or z-score"""
         if episodes:
             all_episodes = np.array(episodes)
             mean_response = np.nanmean(all_episodes, axis=0)
@@ -769,26 +694,6 @@ class MultimodalAnalysis:
         ax.set_xlim(time_array[0], time_array[-1])
         ax.set_xlabel('Time (s)')
         ax.set_ylabel(ylabel)
-        ax.set_title(title)
-        ax.legend()
-        ax.grid(False)
-        
-    def _plot_fiber_zscore_around_events(self, ax, time_array, zscore_episodes, title, color="#008000"):
-        """Plot fiber z-score around events (mean±std) - supports custom color"""
-        if zscore_episodes:
-            all_episodes = np.array(zscore_episodes)
-            mean_response = np.nanmean(all_episodes, axis=0)
-            std_response = np.nanstd(all_episodes, axis=0)
-            
-            ax.plot(time_array, mean_response, color, linestyle='-', linewidth=2, label='Mean')
-            ax.fill_between(time_array, mean_response - std_response,
-                        mean_response + std_response, color=color, alpha=0.3, label='Mean ± STD')
-            ax.axvline(x=0, color='#808080', linestyle='--', alpha=0.8, label='Event')
-            ax.axhline(y=0, color='#808080', linestyle='--', alpha=0.8, label='Baseline')
-            
-        ax.set_xlim(time_array[0], time_array[-1])
-        ax.set_xlabel('Time (s)')
-        ax.set_ylabel('Z-score')
         ax.set_title(title)
         ax.legend()
         ax.grid(False)
@@ -811,74 +716,80 @@ class MultimodalAnalysis:
         
         if all_episodes:
             all_episodes = np.array(all_episodes)
-            im = ax.imshow(all_episodes, aspect='auto', extent=[-pre_time, post_time, len(events), 1], 
-                         cmap='viridis', origin='lower')
+            if len(all_episodes) == 1:
+                all_episodes = np.vstack([all_episodes[0], all_episodes[0]])
+                im = ax.imshow(all_episodes, aspect='auto', 
+                            extent=[-pre_time, post_time, 2, 1], 
+                            cmap='viridis', origin='lower')
+                ax.set_ylabel('Trial')
+            else:
+                im = ax.imshow(all_episodes, aspect='auto', 
+                            extent=[-pre_time, post_time, len(events), 1], 
+                            cmap='viridis', origin='lower')
+                ax.set_ylabel('Trial Number')
+            
             ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Trial Number')
             ax.set_title(title)
-            plt.colorbar(im, ax=ax, label='Running Speed (cm/s)', orientation='horizontal')
-    
-    def _plot_fiber_signal_heatmap(self, ax, episodes, time_array, title, cmap='coolwarm', label='Signal'):
-        """
-        Plot fiber signal heatmap - generic function for dFF or z-score
-        
-        Parameters:
-        -----------
-        ax : matplotlib axis
-            Axis to plot on
-        episodes : list
-            List of episode data arrays
-        time_array : array
-            Time array
-        title : str
-            Plot title
-        cmap : str
-            Colormap name
-        label : str
-            Colorbar label
-        """
-        if episodes:
-            all_episodes = np.array(episodes)
-            im = ax.imshow(all_episodes,
-            aspect='auto',
-            extent=[time_array[0], time_array[-1],
-                    len(episodes), 1],
-            cmap=cmap,
-            origin='lower')
-            ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Trial Number')
-            ax.set_title(title)
-            plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
+            
+            if len(all_episodes) == 1:
+                from matplotlib import colors
+                norm = colors.Normalize(vmin=all_episodes[0].min(), vmax=all_episodes[0].max())
+                sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax, orientation='horizontal')
+                cbar.set_label('Running Speed (cm/s)')
+            else:
+                plt.colorbar(im, ax=ax, label='Running Speed (cm/s)', orientation='horizontal')
         else:
             ax.text(0.5, 0.5, 'No data available', 
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=12, color='#666666')
+                    ha='center', va='center', transform=ax.transAxes,
+                    fontsize=12, color='#666666')
+            ax.set_title(title)
+            ax.axis('off')
+    
+    def _plot_fiber_signal_heatmap(self, ax, episodes, time_array, title, cmap='coolwarm', label='Signal'):
+        """Plot fiber signal heatmap - generic function for dFF or z-score"""
+        if episodes:
+            all_episodes = np.array(episodes)
+            if len(all_episodes) == 1:
+                all_episodes = np.vstack([all_episodes[0], all_episodes[0]])
+                im = ax.imshow(all_episodes,
+                    aspect='auto',
+                    extent=[time_array[0], time_array[-1],
+                            2, 1],
+                    cmap=cmap,
+                    origin='lower')
+                ax.set_ylabel('Trial')
+            else:
+                im = ax.imshow(all_episodes,
+                    aspect='auto',
+                    extent=[time_array[0], time_array[-1],
+                            len(episodes), 1],
+                    cmap=cmap,
+                    origin='lower')
+                ax.set_ylabel('Trial Number')
+            ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
+            ax.set_xlabel('Time (s)')
+            ax.set_title(title)
+            if len(all_episodes) == 1:
+                from matplotlib import colors
+                norm = colors.Normalize(vmin=all_episodes[0].min(), vmax=all_episodes[0].max())
+                sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax, orientation='horizontal')
+                cbar.set_label(label)
+            else:
+                plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
+        else:
+            ax.text(0.5, 0.5, 'No data available', 
+                    ha='center', va='center', transform=ax.transAxes,
+                    fontsize=12, color='#666666')
             ax.set_title(title)
             ax.axis('off')
             
-    def _plot_fiber_zscore_heatmap(self, ax, zscore_episodes, time_array, title):
-        """Plot fiber z-score heatmap using pre-calculated z-score episodes"""
-        if zscore_episodes:
-            all_episodes = np.array(zscore_episodes)
-            im = ax.imshow(all_episodes,
-               aspect='auto',
-               extent=[time_array[0], time_array[-1],
-                       len(zscore_episodes), 1],
-               cmap='coolwarm',
-               origin='lower')
-            ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
-            ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Trial Number')
-            ax.set_title(title)
-            plt.colorbar(im, ax=ax, label='Z-score', orientation='horizontal')
-    
     def running_event_trajectory_analysis(self, period_type):
-        """
-        Analyze trajectories during specific running periods
-        period_type: string key in treadmill_behaviors (e.g., 'movement_periods', 'rest_periods', 'continuous_locomotion_periods')
-        """
+        """Analyze trajectories during specific running periods"""
         animal_data = self.get_current_animal_data()
         if not animal_data:
             log_message("No animal data available", "ERROR")
@@ -1034,10 +945,7 @@ class AcrossdayAnalysis:
                           '#1abc9c', '#e67e22', '#34495e', '#f1c40f', '#95a5a6']
         
     def show_config_window(self, event_type):
-        """
-        Show configuration window for specific event type
-        event_type: 'general_onsets', 'jerks', 'locomotion_initiations', 'locomotion_terminations'
-        """
+        """Show configuration window for specific event type"""
         self.target_event_type = event_type
         event_name_display = event_type.replace('_', ' ').title()
         
@@ -1509,14 +1417,7 @@ class AcrossdayAnalysis:
             log_message("Acrossday analysis failed, no valid results", "ERROR")
 
     def _get_zscore_baseline_params(self, event_type):
-        """
-        Get z-score baseline parameters based on event type
-        
-        Returns:
-            tuple: (baseline_type, baseline_window)
-                baseline_type: 'onset' or 'offset'
-                baseline_window: float, baseline window duration in seconds
-        """
+        """Get z-score baseline parameters based on event type"""
         # Onset events use pre-event baseline
         if event_type in ['general_onsets', 'reset_onsets']:
             return ('onset', 0.5)
@@ -1974,10 +1875,19 @@ class AcrossdayAnalysis:
         
         if all_running_episodes:
             time_array = list(results.values())[0]['running']['time']
-            im = ax.imshow(all_running_episodes, aspect='auto',
-                        extent=[time_array[0], time_array[-1], 
-                                len(all_running_episodes), 1],
-                        cmap='viridis', origin='lower')
+            all_running_episodes = np.array(all_running_episodes)
+            
+            if len(all_running_episodes) == 1:
+                all_running_episodes = np.vstack([all_running_episodes[0], all_running_episodes[0]])
+                im = ax.imshow(all_running_episodes, aspect='auto',
+                            extent=[time_array[0], time_array[-1], 2, 1],
+                            cmap='viridis', origin='lower')
+            else:
+                im = ax.imshow(all_running_episodes, aspect='auto',
+                            extent=[time_array[0], time_array[-1], 
+                                    len(all_running_episodes), 1],
+                            cmap='viridis', origin='lower')
+            
             ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax.set_xlabel('Time (s)')
             ax.set_ylabel('Trial (All Days)')
@@ -1985,8 +1895,8 @@ class AcrossdayAnalysis:
             plt.colorbar(im, ax=ax, label='Speed (cm/s)', orientation='horizontal')
         else:
             ax.text(0.5, 0.5, 'No running data available', 
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=12, color='#666666')
+                    ha='center', va='center', transform=ax.transAxes,
+                    fontsize=12, color='#666666')
             ax.set_title('Running Heatmap - All Days')
             ax.axis('off')
 
@@ -2008,20 +1918,37 @@ class AcrossdayAnalysis:
             cmap = 'coolwarm' if data_type == 'zscore' else 'viridis'
             label = 'Z-score' if data_type == 'zscore' else 'ΔF/F'
             
-            im = ax.imshow(all_fiber_episodes, aspect='auto',
-                        extent=[time_array[0], time_array[-1],
-                                len(all_fiber_episodes), 1],
-                        cmap=cmap, origin='lower')
+            if len(all_fiber_episodes) == 1:
+                all_fiber_episodes = np.vstack([all_fiber_episodes[0], all_fiber_episodes[0]])
+                im = ax.imshow(all_fiber_episodes, aspect='auto',
+                            extent=[time_array[0], time_array[-1], 2, 1],
+                            cmap=cmap, origin='lower')
+                ax.set_ylabel('Trial')
+            else:
+                im = ax.imshow(all_fiber_episodes, aspect='auto',
+                            extent=[time_array[0], time_array[-1],
+                                    len(all_fiber_episodes), 1],
+                            cmap=cmap, origin='lower')
+                ax.set_ylabel('Trial (All Days)')
+            
             ax.axvline(x=0, color="#FF0000", linestyle='--', alpha=0.8)
             ax.set_xlabel('Time (s)')
-            ax.set_ylabel('Trial (All Days)')
             ax.set_title(f'Fiber {label} {wavelength}nm - All Days')
-            plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
+            
+            if len(all_fiber_episodes) == 1:
+                from matplotlib import colors
+                norm = colors.Normalize(vmin=all_fiber_episodes[0].min(), vmax=all_fiber_episodes[0].max())
+                sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+                sm.set_array([])
+                cbar = plt.colorbar(sm, ax=ax, orientation='horizontal')
+                cbar.set_label(label)
+            else:
+                plt.colorbar(im, ax=ax, label=label, orientation='horizontal')
         else:
             data_label = 'Z-score' if data_type == 'zscore' else 'ΔF/F'
             ax.text(0.5, 0.5, f'No {data_label} data available for {wavelength}nm', 
-                ha='center', va='center', transform=ax.transAxes,
-                fontsize=12, color='#666666')
+                    ha='center', va='center', transform=ax.transAxes,
+                    fontsize=12, color='#666666')
             ax.set_title(f'Fiber {data_label} {wavelength}nm - All Days')
             ax.axis('off')
 
@@ -2124,20 +2051,36 @@ class AcrossdayAnalysis:
                 ax_zscore_trace.axis('off')
             plot_idx += 1
 
-        # 1. running heatmap
         ax_rh = fig.add_subplot(2, num_cols, plot_idx)
         running_episodes = data['running']['episodes']
         time_arr = data['running']['time']
         if len(running_episodes):
-            im1 = ax_rh.imshow(running_episodes, aspect='auto',
-                            extent=[time_arr[0], time_arr[-1],
-                                    len(running_episodes), 1],
-                            cmap='viridis', origin='lower')
+            if len(running_episodes) == 1:
+                running_episodes = np.vstack([running_episodes[0], running_episodes[0]])
+                im1 = ax_rh.imshow(running_episodes, aspect='auto',
+                                extent=[time_arr[0], time_arr[-1], 2, 1],
+                                cmap='viridis', origin='lower')
+                ax_rh.set_ylabel('Trial')
+            else:
+                im1 = ax_rh.imshow(running_episodes, aspect='auto',
+                                extent=[time_arr[0], time_arr[-1],
+                                        len(running_episodes), 1],
+                                cmap='viridis', origin='lower')
+                ax_rh.set_ylabel('Trial')
+            
             ax_rh.axvline(0, color='#FF0000', ls='--', alpha=0.8)
             ax_rh.set_xlabel('Time (s)')
-            ax_rh.set_ylabel('Trial')
             ax_rh.set_title(f'{day_name} - Running Heatmap')
-            fig.colorbar(im1, ax=ax_rh, label='Speed (cm/s)', orientation='horizontal')
+            
+            if len(running_episodes) == 1:
+                from matplotlib import colors
+                norm = colors.Normalize(vmin=running_episodes[0].min(), vmax=running_episodes[0].max())
+                sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+                sm.set_array([])
+                cbar = fig.colorbar(sm, ax=ax_rh, orientation='horizontal')
+                cbar.set_label('Speed (cm/s)')
+            else:
+                fig.colorbar(im1, ax=ax_rh, label='Speed (cm/s)', orientation='horizontal')
         else:
             ax_rh.text(0.5, 0.5, 'No running episodes', ha='center', va='center',
                     transform=ax_rh.transAxes, fontsize=12, color='#666666')
@@ -2145,7 +2088,6 @@ class AcrossdayAnalysis:
             ax_rh.axis('off')
         plot_idx += 1
 
-        # 2-N. fiber dFF and z-score heatmaps
         for wl_idx, wl in enumerate(target_wavelengths):
             # dFF heatmap
             ax_dff_heatmap = fig.add_subplot(2, num_cols, plot_idx)
@@ -2154,15 +2096,32 @@ class AcrossdayAnalysis:
                 dff_episodes = dff_data['episodes']
                 time_arr = dff_data['time']
                 if len(dff_episodes):
-                    im2 = ax_dff_heatmap.imshow(dff_episodes, aspect='auto',
-                                            extent=[time_arr[0], time_arr[-1],
-                                                    len(dff_episodes), 1],
-                                            cmap='viridis', origin='lower')
+                    if len(dff_episodes) == 1:
+                        dff_episodes = np.vstack([dff_episodes[0], dff_episodes[0]])
+                        im2 = ax_dff_heatmap.imshow(dff_episodes, aspect='auto',
+                                                extent=[time_arr[0], time_arr[-1], 2, 1],
+                                                cmap='viridis', origin='lower')
+                        ax_dff_heatmap.set_ylabel('Trial')
+                    else:
+                        im2 = ax_dff_heatmap.imshow(dff_episodes, aspect='auto',
+                                                extent=[time_arr[0], time_arr[-1],
+                                                        len(dff_episodes), 1],
+                                                cmap='viridis', origin='lower')
+                        ax_dff_heatmap.set_ylabel('Trial')
+                    
                     ax_dff_heatmap.axvline(0, color='#FF0000', ls='--', alpha=0.8)
                     ax_dff_heatmap.set_xlabel('Time (s)')
-                    ax_dff_heatmap.set_ylabel('Trial')
                     ax_dff_heatmap.set_title(f'{day_name} - Fiber ΔF/F Heatmap {wl}nm')
-                    fig.colorbar(im2, ax=ax_dff_heatmap, label='ΔF/F', orientation='horizontal')
+                    
+                    if len(dff_episodes) == 1:
+                        from matplotlib import colors
+                        norm = colors.Normalize(vmin=dff_episodes[0].min(), vmax=dff_episodes[0].max())
+                        sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+                        sm.set_array([])
+                        cbar = fig.colorbar(sm, ax=ax_dff_heatmap, orientation='horizontal')
+                        cbar.set_label('ΔF/F')
+                    else:
+                        fig.colorbar(im2, ax=ax_dff_heatmap, label='ΔF/F', orientation='horizontal')
                 else:
                     ax_dff_heatmap.text(0.5, 0.5, f'No dFF episodes for {wl}nm',
                             ha='center', va='center', transform=ax_dff_heatmap.transAxes,
@@ -2183,15 +2142,32 @@ class AcrossdayAnalysis:
                 zscore_episodes = zscore_data['episodes']
                 time_arr = zscore_data['time']
                 if len(zscore_episodes):
-                    im3 = ax_zscore_heatmap.imshow(zscore_episodes, aspect='auto',
-                                            extent=[time_arr[0], time_arr[-1],
-                                                    len(zscore_episodes), 1],
-                                            cmap='coolwarm', origin='lower')
+                    if len(zscore_episodes) == 1:
+                        zscore_episodes = np.vstack([zscore_episodes[0], zscore_episodes[0]])
+                        im3 = ax_zscore_heatmap.imshow(zscore_episodes, aspect='auto',
+                                                extent=[time_arr[0], time_arr[-1], 2, 1],
+                                                cmap='coolwarm', origin='lower')
+                        ax_zscore_heatmap.set_ylabel('Trial')
+                    else:
+                        im3 = ax_zscore_heatmap.imshow(zscore_episodes, aspect='auto',
+                                                extent=[time_arr[0], time_arr[-1],
+                                                        len(zscore_episodes), 1],
+                                                cmap='coolwarm', origin='lower')
+                        ax_zscore_heatmap.set_ylabel('Trial')
+                    
                     ax_zscore_heatmap.axvline(0, color='#FF0000', ls='--', alpha=0.8)
                     ax_zscore_heatmap.set_xlabel('Time (s)')
-                    ax_zscore_heatmap.set_ylabel('Trial')
                     ax_zscore_heatmap.set_title(f'{day_name} - Fiber Z-score Heatmap {wl}nm')
-                    fig.colorbar(im3, ax=ax_zscore_heatmap, label='Z-score', orientation='horizontal')
+                    
+                    if len(zscore_episodes) == 1:
+                        from matplotlib import colors
+                        norm = colors.Normalize(vmin=zscore_episodes[0].min(), vmax=zscore_episodes[0].max())
+                        sm = plt.cm.ScalarMappable(cmap='coolwarm', norm=norm)
+                        sm.set_array([])
+                        cbar = fig.colorbar(sm, ax=ax_zscore_heatmap, orientation='horizontal')
+                        cbar.set_label('Z-score')
+                    else:
+                        fig.colorbar(im3, ax=ax_zscore_heatmap, label='Z-score', orientation='horizontal')
                 else:
                     ax_zscore_heatmap.text(0.5, 0.5, f'No z-score episodes for {wl}nm',
                             ha='center', va='center', transform=ax_zscore_heatmap.transAxes,
@@ -2281,74 +2257,3 @@ class OptogeneticAnalysis():
             
             if export_statistics and day_stats:
                 all_statistics_rows.extend(day_stats)
-
-class DrugAnalysis():
-    def drug_analysis(self):
-        """Perform drug analysis aligned to Drug Administration events"""
-        if not self.multi_animal_data:
-            log_message("No animal data loaded for drug analysis", "ERROR")
-            return
-        
-        # Show parameter window
-        self._show_drug_param_window()
-    
-    def _show_drug_param_window(self):
-        """Show parameter configuration window for drug analysis"""
-        param_window = tk.Toplevel(self.root)
-        param_window.title("Drug Analysis Parameters")
-        param_window.geometry("400x250")
-        param_window.configure(bg="#f0f0f0")
-        
-        # Pre time
-        tk.Label(param_window, text="Pre-event Time (s):", bg="#f0f0f0").pack(pady=(20,5))
-        pre_time_var = tk.DoubleVar(value=10.0)
-        pre_time_entry = tk.Entry(param_window, textvariable=pre_time_var)
-        pre_time_entry.pack()
-        
-        # Post time
-        tk.Label(param_window, text="Post-event Time (s):", bg="#f0f0f0").pack(pady=(10,5))
-        post_time_var = tk.DoubleVar(value=30.0)
-        post_time_entry = tk.Entry(param_window, textvariable=post_time_var)
-        post_time_entry.pack()
-        
-        # Export statistics
-        export_var = tk.BooleanVar(value=False)
-        export_check = tk.Checkbutton(param_window, text="Export Statistics to CSV", variable=export_var, bg="#f0f0f0")
-        export_check.pack(pady=(10,10))
-        
-        # Start button
-        start_button = tk.Button(param_window, text="Start Analysis", 
-                                command=lambda: self._start_drug_analysis(
-                                    pre_time_var.get(), post_time_var.get(), export_var.get(), param_window))
-        start_button.pack(pady=(10,20))
-
-    def _start_drug_analysis(self, pre_time, post_time, export_statistics, param_window):
-        """Start drug analysis with given parameters"""
-        param_window.destroy()
-        
-        log_message("Starting drug analysis...")
-        
-        results = {}
-        all_statistics_rows = []
-        
-        for day_name, animals in self.multi_animal_data.items():
-            day_stats = []
-            day_result, day_stats = self.analyze_day(
-                day_name, animals, pre_time, post_time, event_type='Drug_Administration', collect_statistics=export_statistics)
-            
-            if day_result:
-                results[day_name] = day_result
-            
-            if export_statistics and day_stats:
-                all_statistics_rows.extend(day_stats)
-        
-        # Plot results
-        if results:
-            self.plot_results(results)
-            log_message("Drug analysis completed and results plotted.")
-        else:
-            log_message("No valid data found for drug analysis.", "WARNING")
-        
-        # Export statistics if requested
-        if export_statistics and all_statistics_rows:
-            self._export_acrossday_statistics(all_statistics_rows)

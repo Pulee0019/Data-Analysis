@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import re
+from Running_analysis import *
 
 def convert_num(s):
     s = s.strip()
@@ -167,13 +168,13 @@ def h_computeSpeed2(time, data, voltageRange):
     duration = np.mean(time[-11:]) - np.mean(time[:11])
     speed = deltaDegree / duration
     
-    diameter = threadmill_diameter
+    diameter = treadmill_diameter
     speed2 = speed / 360 * diameter * np.pi
     
     return speed2
 
 running_data = r"D:\Expriment\Data\Acethylcholine\filename_AST2_1.ast2"
-threadmill_diameter = 22  # in cm
+treadmill_diameter = 22  # in cm
 invert_running = True
 header, raw_data = h_AST2_readData(running_data)
 data = h_AST2_raw2Speed(raw_data[2], header, voltageRange=None)
@@ -182,10 +183,15 @@ speed = data['speed']
 window_size = 10
 kernel = np.ones(window_size) / window_size
 filtered_speed = np.convolve(speed, kernel, mode='same')
+speed_data = {'timestamps': timestamps, 'speed': filtered_speed}
+ast_data = {"data": speed_data}
+treadmill_behaviours = classify_treadmill_behavior(ast_data)
 
-plt.figure(figsize=(16,9))
-plt.plot(timestamps, speed, label='raw speed', color='g', alpha=0.7)
+plt.figure(figsize=(4,3))
+# plt.plot(timestamps, speed, label='raw speed', color='g', alpha=0.7)
 plt.plot(timestamps, filtered_speed, label='filted speed', color='r', alpha=0.7)
+for start, end in treadmill_behaviours['rest_periods']:
+    plt.axvspan(start, end, color='green', alpha=0.3)
 plt.xlim(timestamps[0], timestamps[-1])
 plt.title("speed on treadmill")
 plt.xlabel("time(s)")

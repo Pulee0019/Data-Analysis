@@ -119,10 +119,18 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                     
                     signal_data = preprocessed_data[signal_col].values
                     
-                    if model_type.lower() == "exponential":
-                        def exp_model(t, a, b, c):
-                            return a * np.exp(-b * t) + c
+                    def exp_model(t, a, b, c):
+                        return a * np.exp(-b * t) + c
+                    
+                    events_col = channels.get('events')
+                    drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+                    if drug_events.empty:
+                        baseline_mask = np.ones_like(time_data, dtype=bool)
+                    else:
+                        drug_start_time = drug_events[time_col].iloc[0]
+                        baseline_mask = time_data < drug_start_time
                         
+                    if model_type.lower() == "exponential":
                         p0 = [
                             np.max(signal_data) - np.min(signal_data),
                             0.01,
@@ -130,19 +138,15 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                         ]
                         
                         try:
-                            params, _ = curve_fit(exp_model, time_data, signal_data, p0=p0, maxfev=5000)
+                            params, _ = curve_fit(exp_model, time_data[baseline_mask], signal_data[baseline_mask], p0=p0, maxfev=5000)
                             baseline_pred = exp_model(time_data, *params)
                         except Exception as e:
                             log_message(f"Exponential fit failed: {str(e)}, using polynomial instead", "INFO")
-                            X = time_data.values.reshape(-1, 1)
-                            model = LinearRegression()
-                            model.fit(X, signal_data)
-                            baseline_pred = model.predict(X)
+                            params = np.polyfit(time_data, signal_data, 1)
+                            baseline_pred = np.polyval(params, time_data)
                     else:
-                        X = time_data.values.reshape(-1, 1)
-                        model = LinearRegression()
-                        model.fit(X, signal_data)
-                        baseline_pred = model.predict(X)
+                        params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], 1)
+                        baseline_pred = np.polyval(params, time_data)
                     
                     baseline_corrected_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
                     preprocessed_data[baseline_corrected_col] = signal_data - baseline_pred

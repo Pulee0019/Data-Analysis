@@ -20,7 +20,8 @@ import re
 from Behavior_analysis import position_analysis, displacement_analysis, x_displacement_analysis
 from Fiber_analysis import apply_preprocessing, calculate_dff, calculate_zscore
 from Running_analysis import classify_treadmill_behavior, preprocess_running_data
-from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis, OptogeneticAnalysis, DrugAnalysis
+from Multimodal_Analysis import MultimodalAnalysis, AcrossdayAnalysis, OptogeneticAnalysis
+from Drug_analysis import DrugAnalysis
 from logger import log_message, set_log_widget
 
 try:
@@ -2141,98 +2142,31 @@ def show_channel_selection_dialog():
     running_channel_vars = {}
     invert_running_vars = {}
     
-    if multi_animal_data:
-        for animal_data in multi_animal_data:
-            animal_id = animal_data['animal_id']
-            group = animal_data.get('group', '')
-            label = f"{animal_id} ({group})" if group else animal_id
-            
-            animal_main_frame = ttk.Frame(scrollable_frame)
-            animal_main_frame.pack(fill="x", padx=5, pady=5)
-            
-            fiber_frame = ttk.LabelFrame(animal_main_frame, text=f"{label} - Fiber Channels")
-            fiber_frame.pack(side=tk.LEFT, fill="both", expand=True, padx=(0, 5))
-            
-            channel_vars[animal_id] = {}
-            
-            if 'channel_data' in animal_data:
-                saved_channels = channel_memory.get(animal_id, [])
-                
-                for channel_num in sorted(animal_data['channel_data'].keys()):
-                    default_value = channel_num in saved_channels or (not saved_channels and channel_num == 1)
-                    var = tk.BooleanVar(value=default_value)
-                    channel_vars[animal_id][channel_num] = var
-                    
-                    chk = ttk.Checkbutton(
-                        fiber_frame, 
-                        text=f"Channel {channel_num}",
-                        variable=var
-                    )
-                    chk.pack(anchor="w", padx=2, pady=2)
-            
-            running_frame = ttk.LabelFrame(animal_main_frame, text="Running Settings")
-            running_frame.pack(side=tk.LEFT, fill="both", padx=(5, 0))
-            
-            available_channels = []
-            if 'ast2_data' in animal_data and animal_data['ast2_data']:
-                header = animal_data['ast2_data']['header']
-                if 'activeChIDs' in header:
-                    available_channels = header['activeChIDs']
-                else:
-                    if 'files' in animal_data and 'ast2' in animal_data['files']:
-                        try:
-                            header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
-                            available_channels = list(range(len(raw_data)))
-                        except:
-                            available_channels = [0, 1, 2, 3]
-            
-            if not available_channels:
-                available_channels = [0, 1, 2, 3]
-            
-            channel_select_frame = ttk.Frame(running_frame)
-            channel_select_frame.pack(fill="x", padx=5, pady=5)
-            
-            ttk.Label(channel_select_frame, text="Channel:").pack(side=tk.LEFT)
-
-            saved_running_channel = channel_memory.get(f"{animal_id}_running_channel", running_channel)
-            
-            running_channel_var = tk.StringVar(value=str(saved_running_channel))
-            running_channel_vars[animal_id] = running_channel_var
-            
-            channel_combo = ttk.Combobox(channel_select_frame, 
-                                        textvariable=running_channel_var,
-                                        values=available_channels, 
-                                        state="readonly", 
-                                        width=8)
-            channel_combo.pack(side=tk.LEFT, padx=(5, 0))
-            
-            # Invert checkbox
-            saved_invert = channel_memory.get(f"{animal_id}_invert_running", invert_running)
-            invert_var = tk.BooleanVar(value=saved_invert)
-            invert_running_vars[animal_id] = invert_var
-            
-            invert_check = ttk.Checkbutton(running_frame, 
-                                          text="Invert Running", 
-                                          variable=invert_var)
-            invert_check.pack(anchor="w", padx=5, pady=2)
-            
-    else:
+    if not multi_animal_data:
+        log_message("No animal data available for channel selection", "WARNING")
+        dialog.destroy()
+        return
+    
+    for animal_data in multi_animal_data:
+        animal_id = animal_data['animal_id']
+        group = animal_data.get('group', '')
+        label = f"{animal_id} ({group})" if group else animal_id
+        
         animal_main_frame = ttk.Frame(scrollable_frame)
         animal_main_frame.pack(fill="x", padx=5, pady=5)
         
-        # Fiber Channels
-        fiber_frame = ttk.LabelFrame(animal_main_frame, text="Fiber Channels")
+        fiber_frame = ttk.LabelFrame(animal_main_frame, text=f"{label} - Fiber Channels")
         fiber_frame.pack(side=tk.LEFT, fill="both", expand=True, padx=(0, 5))
         
-        channel_vars['single'] = {}
+        channel_vars[animal_id] = {}
         
-        if 'channel_data' in globals() and channel_data:
-            saved_channels = channel_memory.get('single', [])
+        if 'channel_data' in animal_data:
+            saved_channels = channel_memory.get(animal_id, [])
             
-            for channel_num in sorted(channel_data.keys()):
+            for channel_num in sorted(animal_data['channel_data'].keys()):
                 default_value = channel_num in saved_channels or (not saved_channels and channel_num == 1)
                 var = tk.BooleanVar(value=default_value)
-                channel_vars['single'][channel_num] = var
+                channel_vars[animal_id][channel_num] = var
                 
                 chk = ttk.Checkbutton(
                     fiber_frame, 
@@ -2241,26 +2175,34 @@ def show_channel_selection_dialog():
                 )
                 chk.pack(anchor="w", padx=2, pady=2)
         
-        # Running Settings
         running_frame = ttk.LabelFrame(animal_main_frame, text="Running Settings")
         running_frame.pack(side=tk.LEFT, fill="both", padx=(5, 0))
         
-        # Acquire Available channels
-        available_channels = [0, 1, 2, 3]
-        if 'ast2_data' in globals() and globals().get('ast2_data'):
-            header = globals()['ast2_data']['header']
+        available_channels = []
+        if 'ast2_data' in animal_data and animal_data['ast2_data']:
+            header = animal_data['ast2_data']['header']
             if 'activeChIDs' in header:
                 available_channels = header['activeChIDs']
+            else:
+                if 'files' in animal_data and 'ast2' in animal_data['files']:
+                    try:
+                        header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                        available_channels = list(range(len(raw_data)))
+                    except:
+                        available_channels = [0, 1, 2, 3]
         
-        # Running Channel Selection
+        if not available_channels:
+            available_channels = [0, 1, 2, 3]
+        
         channel_select_frame = ttk.Frame(running_frame)
         channel_select_frame.pack(fill="x", padx=5, pady=5)
         
         ttk.Label(channel_select_frame, text="Channel:").pack(side=tk.LEFT)
+
+        saved_running_channel = channel_memory.get(f"{animal_id}_running_channel", running_channel)
         
-        saved_running_channel = channel_memory.get('single_running_channel', running_channel)
         running_channel_var = tk.StringVar(value=str(saved_running_channel))
-        running_channel_vars['single'] = running_channel_var
+        running_channel_vars[animal_id] = running_channel_var
         
         channel_combo = ttk.Combobox(channel_select_frame, 
                                     textvariable=running_channel_var,
@@ -2270,13 +2212,13 @@ def show_channel_selection_dialog():
         channel_combo.pack(side=tk.LEFT, padx=(5, 0))
         
         # Invert checkbox
-        saved_invert = channel_memory.get('single_invert_running', invert_running)
+        saved_invert = channel_memory.get(f"{animal_id}_invert_running", invert_running)
         invert_var = tk.BooleanVar(value=saved_invert)
-        invert_running_vars['single'] = invert_var
+        invert_running_vars[animal_id] = invert_var
         
         invert_check = ttk.Checkbutton(running_frame, 
-                                      text="Invert Running", 
-                                      variable=invert_var)
+                                        text="Invert Running", 
+                                        variable=invert_var)
         invert_check.pack(anchor="w", padx=5, pady=2)
     
     btn_frame = ttk.Frame(dialog)
@@ -2297,121 +2239,75 @@ def toggle_all_channels(select):
 def finalize_channel_selection(dialog):
     global channel_memory, running_channel, invert_running
     
-    if multi_animal_data:
-        for animal_data in multi_animal_data:
-            animal_id = animal_data['animal_id']
+    if not multi_animal_data:
+        log_message("No animal data available to finalize channel selection", "WARNING")
+        dialog.destroy()
+        return
+    
+    for animal_data in multi_animal_data:
+        animal_id = animal_data['animal_id']
+        
+        # Fiber channels
+        if animal_id in channel_vars:
+            selected_channels = []
+            for channel_num, var in channel_vars[animal_id].items():
+                if var.get():
+                    selected_channels.append(channel_num)
             
-            # Fiber channels
-            if animal_id in channel_vars:
-                selected_channels = []
-                for channel_num, var in channel_vars[animal_id].items():
-                    if var.get():
-                        selected_channels.append(channel_num)
+            if not selected_channels:
+                log_message(f"Please select at least one fiber channel for {animal_id}", "WARNING")
+                return
                 
-                if not selected_channels:
-                    log_message(f"Please select at least one fiber channel for {animal_id}", "WARNING")
-                    return
-                    
-                animal_data['active_channels'] = selected_channels
-                channel_memory[animal_id] = selected_channels
-            
-            # Running settings
-            if animal_id in running_channel_vars:
-                try:
-                    selected_running_channel = int(running_channel_vars[animal_id].get())
-                    animal_data['running_channel'] = selected_running_channel
-                    channel_memory[f"{animal_id}_running_channel"] = selected_running_channel
-                except ValueError:
-                    log_message(f"Invalid running channel for {animal_id}", "WARNING")
-                    return
-            
-            if animal_id in invert_running_vars:
-                invert_value = invert_running_vars[animal_id].get()
-                animal_data['invert_running'] = invert_value
-                channel_memory[f"{animal_id}_invert_running"] = invert_value
-            
-            if 'files' in animal_data and 'ast2' in animal_data['files']:
-                try:
-                    header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
-                    selected_channel = animal_data.get('running_channel', running_channel)
-                    
-                    if selected_channel < len(raw_data):
-                        old_invert = invert_running
-                        invert_running = animal_data.get('invert_running', False)
-                        
-                        speed = h_AST2_raw2Speed(raw_data[selected_channel], header, voltageRange=None)
-                        ast2_data = {
-                            'header': header,
-                            'data': speed
-                        }
-                        animal_data['ast2_data'] = ast2_data
-                        
-                        invert_running = old_invert
-                    else:
-                        log_message(f"Running channel {selected_channel} out of range for {animal_id}", "ERROR")
-                except Exception as e:
-                    log_message(f"Failed to reload AST2 for {animal_id}: {str(e)}", "ERROR")
-            
-            if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
-                if animal_data['active_channels'] is None:
-                    animal_data['active_channels'] = []
-
-                alignment_success = align_data(animal_data)
-                if not alignment_success:
-                    log_message(f"Failed to align data for {animal_id}", "WARNING")
-                    if 'fiber_data' in animal_data:
-                        animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
-    else:
-        selected_channels = []
-        for channel_num, var in channel_vars['single'].items():
-            if var.get():
-                selected_channels.append(channel_num)
+            animal_data['active_channels'] = selected_channels
+            channel_memory[animal_id] = selected_channels
         
-        if not selected_channels:
-            log_message("Please select at least one fiber channel", "WARNING")
-            return
-        
-        global active_channels
-        active_channels = selected_channels
-        channel_memory['single'] = selected_channels
-        
-        if 'single' in running_channel_vars:
+        # Running settings
+        if animal_id in running_channel_vars:
             try:
-                selected_running_channel = int(running_channel_vars['single'].get())
-                running_channel = selected_running_channel
-                channel_memory['single_running_channel'] = selected_running_channel
+                selected_running_channel = int(running_channel_vars[animal_id].get())
+                animal_data['running_channel'] = selected_running_channel
+                channel_memory[f"{animal_id}_running_channel"] = selected_running_channel
             except ValueError:
-                log_message("Invalid running channel", "WARNING")
+                log_message(f"Invalid running channel for {animal_id}", "WARNING")
                 return
         
-        if 'single' in invert_running_vars:
-            invert_running = invert_running_vars['single'].get()
-            channel_memory['single_invert_running'] = invert_running
+        if animal_id in invert_running_vars:
+            invert_value = invert_running_vars[animal_id].get()
+            animal_data['invert_running'] = invert_value
+            channel_memory[f"{animal_id}_invert_running"] = invert_value
         
-        if 'ast2_file' in globals() and globals().get('ast2_file'):
+        if 'files' in animal_data and 'ast2' in animal_data['files']:
             try:
-                header, raw_data = h_AST2_readData(globals()['ast2_file'])
-                if running_channel < len(raw_data):
-                    speed = h_AST2_raw2Speed(raw_data[running_channel], header, voltageRange=None)
+                header, raw_data = h_AST2_readData(animal_data['files']['ast2'])
+                selected_channel = animal_data.get('running_channel', running_channel)
+                
+                if selected_channel < len(raw_data):
+                    old_invert = invert_running
+                    invert_running = animal_data.get('invert_running', False)
+                    
+                    speed = h_AST2_raw2Speed(raw_data[selected_channel], header, voltageRange=None)
                     ast2_data = {
                         'header': header,
                         'data': speed
                     }
-                    globals()['ast2_data'] = ast2_data
+                    animal_data['ast2_data'] = ast2_data
+                    
+                    invert_running = old_invert
                 else:
-                    log_message(f"Running channel {running_channel} out of range", "ERROR")
+                    log_message(f"Running channel {selected_channel} out of range for {animal_id}", "ERROR")
             except Exception as e:
-                log_message(f"Failed to reload AST2: {str(e)}", "ERROR")
+                log_message(f"Failed to reload AST2 for {animal_id}: {str(e)}", "ERROR")
         
-        if active_channels is None:
-            active_channels = []
-        
-        alignment_success = align_data()
-        if not alignment_success:
-            log_message("Alignment failed, but continuing with available data", "WARNING")
-            if hasattr(globals(), 'fiber_data'):
-                globals()['fiber_data_trimmed'] = globals()['fiber_data']
+        if 'fiber_data' in animal_data and animal_data['fiber_data'] is not None:
+            if animal_data['active_channels'] is None:
+                animal_data['active_channels'] = []
 
+            alignment_success = align_data(animal_data)
+            if not alignment_success:
+                log_message(f"Failed to align data for {animal_id}", "WARNING")
+                if 'fiber_data' in animal_data:
+                    animal_data['fiber_data_trimmed'] = animal_data['fiber_data']
+    
     save_channel_memory()
     
     dialog.destroy()
@@ -2493,7 +2389,16 @@ def align_data(animal_data=None):
         if len(input3_events) < 1:
             multimodal_menu.entryconfig("Optogenetic Analysis", state="disabled")
             log_message("Could not find Input3 events for optogenetic analysis", "INFO")
+        else:
+            multimodal_menu.entryconfig("Optogenetic Analysis", state="normal")
         
+        drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+        if len(drug_events) < 1:
+            multimodal_menu.entryconfig("Drug Analysis", state="disabled")
+            log_message("Could not find Event1 events for drug analysis", "INFO")
+        else:
+            multimodal_menu.entryconfig("Drug Analysis", state="normal")
+
         # Get running start time (first Input2 event)
         running_start_time = input2_events[time_col].iloc[0]
         
@@ -4369,6 +4274,7 @@ def calculate_and_plot_zscore_wrapper():
 def update_animal_list_display():
     """Update animal list to show analysis status"""
     if not multi_animal_data:
+        log_message("No animal data available to update display", "WARNING")
         return
     
     file_listbox.delete(0, tk.END)
@@ -4920,8 +4826,12 @@ multimodal_menu.add_command(label="Optogenetic Analysis",
                              command=lambda: initial_optogenetic_analysis().optogenetic_analysis())
 
 # Drug Analysis submenu
-multimodal_menu.add_command(label="Drug Analysis", 
-                             command=lambda: initial_drug_analysis().drug_analysis())
+drug_menu = tk.Menu(multimodal_menu, tearoff=0)
+multimodal_menu.add_cascade(label="Drug Analysis", menu=drug_menu)
+drug_menu.add_command(label="single animal", 
+                             command=lambda: initial_drug_analysis().single_animal_drug_analysis())
+drug_menu.add_command(label="multi animal", 
+                             command=lambda: initial_drug_analysis().multi_animal_drug_analysis())
 
 setting_menu = tk.Menu(menubar, tearoff=0)
 menubar.add_cascade(label="Settings", menu=setting_menu)
