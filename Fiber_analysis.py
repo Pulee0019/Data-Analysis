@@ -5,7 +5,7 @@ from scipy.optimize import curve_fit
 from logger import log_message
 
 def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="470"):
-    """Apply smoothing to fiber data - supports combined wavelengths"""
+    """Apply smoothing to all signals (target + 410) - supports combined wavelengths"""
     try:
         if animal_data is not None and not isinstance(animal_data, dict):
             log_message(f"Invalid animal_data type: {type(animal_data)}", "ERROR")
@@ -49,24 +49,29 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         if not isinstance(active_channels, list):
             active_channels = [active_channels] if active_channels else []
         
-        # Parse target signal
+        # Parse target signal and collect all wavelengths to process (target + 410)
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        wavelengths_to_process = set(target_wavelengths)
+        wavelengths_to_process.add('410')  # Always include 410
         
+        smoothed_count = 0
         for channel_num in active_channels:
             if channel_num in channel_data:
-                # Process each wavelength separately
-                for wavelength in target_wavelengths:
+                # Process all wavelengths (target + 410)
+                for wavelength in wavelengths_to_process:
                     target_col = channel_data[channel_num].get(wavelength)
                     if target_col and target_col in preprocessed_data.columns:
                         smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
                         preprocessed_data[smoothed_col] = savgol_filter(
                             preprocessed_data[target_col], window_size, poly_order)
+                        smoothed_count += 1
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
         else:
             globals()['preprocessed_data'] = preprocessed_data
         
+        log_message(f"Smoothing applied to {smoothed_count} signals (target + 410)", "INFO")
         return True
         
     except Exception as e:
@@ -74,7 +79,7 @@ def smooth_data(animal_data=None, window_size=11, poly_order=3, target_signal="4
         return False
 
 def baseline_correction(animal_data=None, model_type="Polynomial", target_signal="470", apply_smooth=False):
-    """Apply baseline correction - independent of smoothing"""
+    """Apply baseline correction to all signals (target + 410) - independent of smoothing"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -99,13 +104,16 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
         time_col = channels['time']
         time_data = preprocessed_data[time_col]
         
-        # Parse target signal
+        # Parse target signal and collect all wavelengths to process (target + 410)
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
+        wavelengths_to_process = set(target_wavelengths)
+        wavelengths_to_process.add('410')  # Always include 410
         
+        corrected_count = 0
         for channel_num in active_channels:
             if channel_num in channel_data:
-                # Process each wavelength separately
-                for wavelength in target_wavelengths:
+                # Process all wavelengths (target + 410)
+                for wavelength in wavelengths_to_process:
                     target_col = channel_data[channel_num].get(wavelength)
                     if not target_col or target_col not in fiber_data.columns:
                         continue
@@ -123,12 +131,15 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                         return a * np.exp(-b * t) + c
                     
                     events_col = channels.get('events')
-                    drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
-                    if drug_events.empty:
-                        baseline_mask = np.ones_like(time_data, dtype=bool)
+                    if events_col and events_col in fiber_data.columns:
+                        drug_events = fiber_data[fiber_data[events_col].str.contains('Event1', na=False)]
+                        if drug_events.empty:
+                            baseline_mask = np.ones_like(time_data, dtype=bool)
+                        else:
+                            drug_start_time = drug_events[time_col].iloc[0]
+                            baseline_mask = time_data < drug_start_time
                     else:
-                        drug_start_time = drug_events[time_col].iloc[0]
-                        baseline_mask = time_data < drug_start_time
+                        baseline_mask = np.ones_like(time_data, dtype=bool)
                         
                     if model_type.lower() == "exponential":
                         p0 = [
@@ -141,8 +152,8 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                             params, _ = curve_fit(exp_model, time_data[baseline_mask], signal_data[baseline_mask], p0=p0, maxfev=5000)
                             baseline_pred = exp_model(time_data, *params)
                         except Exception as e:
-                            log_message(f"Exponential fit failed: {str(e)}, using polynomial instead", "INFO")
-                            params = np.polyfit(time_data, signal_data, 1)
+                            log_message(f"Exponential fit failed for CH{channel_num}_{wavelength}: {str(e)}, using polynomial", "INFO")
+                            params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], 1)
                             baseline_pred = np.polyval(params, time_data)
                     else:
                         params = np.polyfit(time_data[baseline_mask], signal_data[baseline_mask], 1)
@@ -151,12 +162,14 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
                     baseline_corrected_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
                     preprocessed_data[baseline_corrected_col] = signal_data - baseline_pred
                     preprocessed_data[f"CH{channel_num}_{wavelength}_baseline_pred"] = baseline_pred
+                    corrected_count += 1
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
         else:
             globals()['preprocessed_data'] = preprocessed_data
         
+        log_message(f"Baseline correction applied to {corrected_count} signals (target + 410)", "INFO")
         return True
         
     except Exception as e:
@@ -165,7 +178,7 @@ def baseline_correction(animal_data=None, model_type="Polynomial", target_signal
 
 def motion_correction(animal_data=None, target_signal="470", reference_signal="410", 
                      apply_smooth=False, apply_baseline=False):
-    """Apply motion correction - independent of other preprocessing"""
+    """Apply motion correction to target signals only - uses appropriate 410 reference"""
     try:
         if animal_data:
             if 'preprocessed_data' not in animal_data:
@@ -191,9 +204,10 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
             log_message("Motion correction requires 410nm as reference signal", "WARNING")
             return False
         
-        # Parse target signal
+        # Parse target signal (only process target wavelengths, not 410)
         target_wavelengths = target_signal.split('+') if '+' in target_signal else [target_signal]
         
+        corrected_count = 0
         for channel_num in active_channels:
             if channel_num in channel_data:
                 ref_col = channel_data[channel_num].get('410')
@@ -201,26 +215,57 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
                     log_message(f"No 410nm data for channel CH{channel_num}", "INFO")
                     continue
                 
-                # Process each wavelength separately
+                # Determine which 410 reference to use based on baseline correction status
+                if apply_baseline:
+                    # Use baseline corrected 410 if available
+                    ref_410_col = f"CH{channel_num}_410_baseline_corrected"
+                    if ref_410_col in preprocessed_data.columns:
+                        ref_data = preprocessed_data[ref_410_col]
+                        ref_source = "baseline-corrected 410"
+                    else:
+                        # Fallback to smoothed or raw
+                        if apply_smooth and f"CH{channel_num}_410_smoothed" in preprocessed_data.columns:
+                            ref_data = preprocessed_data[f"CH{channel_num}_410_smoothed"]
+                            ref_source = "smoothed 410"
+                        else:
+                            ref_data = preprocessed_data[ref_col]
+                            ref_source = "raw 410"
+                        log_message(f"Baseline corrected 410 not found for CH{channel_num}, using {ref_source}", "INFO")
+                else:
+                    # Use smoothed or raw 410
+                    if apply_smooth and f"CH{channel_num}_410_smoothed" in preprocessed_data.columns:
+                        ref_data = preprocessed_data[f"CH{channel_num}_410_smoothed"]
+                        ref_source = "smoothed 410"
+                    else:
+                        ref_data = preprocessed_data[ref_col]
+                        ref_source = "raw 410"
+                
+                # Process each target wavelength separately (not 410)
                 for wavelength in target_wavelengths:
+                    if wavelength == '410':
+                        continue  # Skip 410 for motion correction
+                    
                     target_col = channel_data[channel_num].get(wavelength)
                     if not target_col or target_col not in fiber_data.columns:
                         continue
                     
-                    # Choose data source based on preprocessing history
+                    # Choose target signal data source based on preprocessing history
                     baseline_col = f"CH{channel_num}_{wavelength}_baseline_corrected"
                     smoothed_col = f"CH{channel_num}_{wavelength}_smoothed"
                     
                     if apply_baseline and baseline_col in preprocessed_data.columns:
                         signal_col = baseline_col
+                        signal_source = "baseline-corrected"
                     elif apply_smooth and smoothed_col in preprocessed_data.columns:
                         signal_col = smoothed_col
+                        signal_source = "smoothed"
                     else:
                         signal_col = target_col
+                        signal_source = "raw"
                     
                     signal_data = preprocessed_data[signal_col]
-                    ref_data = preprocessed_data[ref_col]
                     
+                    # Perform linear regression
                     X = ref_data.values.reshape(-1, 1)
                     y = signal_data.values
                     model = LinearRegression()
@@ -231,12 +276,16 @@ def motion_correction(animal_data=None, target_signal="470", reference_signal="4
                     motion_corrected_col = f"CH{channel_num}_{wavelength}_motion_corrected"
                     preprocessed_data[motion_corrected_col] = signal_data - predicted_signal
                     preprocessed_data[f"CH{channel_num}_{wavelength}_fitted_ref"] = predicted_signal
+                    corrected_count += 1
+                    
+                    log_message(f"CH{channel_num}_{wavelength}: {signal_source} signal fitted against {ref_source}", "INFO")
         
         if animal_data:
             animal_data['preprocessed_data'] = preprocessed_data
         else:
             globals()['preprocessed_data'] = preprocessed_data
         
+        log_message(f"Motion correction applied to {corrected_count} target signals", "INFO")
         return True
         
     except Exception as e:
