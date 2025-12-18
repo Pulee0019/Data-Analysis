@@ -3667,7 +3667,8 @@ def fiber_preprocessing():
     motion_frame = ttk.LabelFrame(main_frame, text="Motion Correction")
     motion_frame.pack(fill=tk.X, padx=5, pady=5)
     
-    ttk.Checkbutton(motion_frame, text="Apply Motion Correction", variable=apply_motion).pack(anchor="w", padx=5, pady=5)
+    ttk.Checkbutton(motion_frame, text="Apply Motion Correction", variable=apply_motion,
+        command=lambda: toggle_motion_correction()).grid(row=0, column=0, sticky="w")
     
     global button_frame
     button_frame = ttk.Frame(main_frame)
@@ -3677,6 +3678,11 @@ def fiber_preprocessing():
               command=lambda: apply_preprocessing_wrapper()).pack(side=tk.LEFT, padx=5)
     ttk.Button(button_frame, text="Close", 
               command=prep_window.destroy).pack(side=tk.RIGHT, padx=5)
+
+def toggle_motion_correction():
+        if reference_signal_var.get() != "410":
+            apply_motion.set(False)
+            log_message("Motion correction requires 410nm as reference signal", "WARNING")
 
 def detect_wavelengths_and_generate_combinations(channel_data):
     """Detect available wavelengths and generate all possible combinations"""
